@@ -1,3 +1,9 @@
+2014-05-07	Jure Grabnar <grabnar12@gmail.com>
+
+	* multi.c: Add condition to fix memory corruption and downloading in parallel
+	in general.
+	* retr.c: Increase buffer size by 1 for '\0' to avoid memory corruption.
+
 2014-03-31	Jure Grabnar  <grabnar12@gmail.com>
 
 	* iri.h: Fix macro parse_charset(str) to not cause 'left-hand operand of

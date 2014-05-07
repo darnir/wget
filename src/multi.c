@@ -157,7 +157,7 @@ fill_ranges_data(int num_of_resources, long long int file_size,
       for (r = 0; r < num_of_resources; ++r)
         ranges[i].resources[r] = false;
       ++i;
-    } while (ranges[i-1].last_byte < (file_size - 1));
+    } while (i < opt.jobs && ranges[i-1].last_byte < (file_size - 1));
   ranges[i-1].last_byte = file_size -1;
 
   return i;
