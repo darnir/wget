@@ -150,7 +150,6 @@ struct request {
 };
 
 extern int numurls;
-
 /* Create a new, empty request. Set the request's method and its
    arguments.  METHOD should be a literal string (or it should outlive
    the request) because it will not be freed.  ARG will be freed by
@@ -2783,7 +2782,7 @@ read_header:
           REGISTER_PERSISTENT_CONNECTION (4);
           return RETRUNNEEDED;
         }
-      else if (!ALLOW_CLOBBER)
+      else if (!ALLOW_CLOBBER && !opt.metalink_file)
         {
           char *unique = unique_name (hs->local_file, true);
           if (unique != hs->local_file)
@@ -3181,7 +3180,12 @@ read_header:
 #endif /* def __VMS [else] */
 
   /* Open the local file.  */
-  if (!output_stream)
+  if (opt.jobs > 1)
+    {
+      fp = fopen (hs->local_file, "r+b");
+      fseek (fp, hs->restval, SEEK_SET);
+    }
+  else if (!output_stream)
     {
       mkalldirs (hs->local_file);
       if (opt.backups)

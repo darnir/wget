@@ -36,94 +36,82 @@ as that of the covered work.  */
 #include <pthread.h>
 #include <semaphore.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "multi.h"
 #include "retr.h"
 #include "url.h"
 #include "exits.h"
 
+/*  Suffix for temporary files. Last 6 chars must be 'X' because of mkstemp(). */
+#define SUFFIX_TEMP ".tmp.XXXXXX"
+
 static struct range *ranges;
-char **files;
+char *main_file;
 
 static void *segmented_retrieve_url (void *);
 
 /*  Allocate space for temporary file names. */
 void
-init_temp_files()
+init_temp_files(char *file_name)
 {
-  int i;
+  int alloc_size = (opt.dir_prefix ? strlen (opt.dir_prefix) + (sizeof "/") : 0)
+                    + strlen (file_name) + (sizeof SUFFIX_TEMP) + 1;
 
-  if(!(files = malloc (opt.jobs * (sizeof *files))))
+  if(!(main_file = malloc (alloc_size)))
     {
-      logprintf (LOG_VERBOSE, "Space for temporary file data could not be allocated.\n");
+      logprintf (LOG_VERBOSE, "Space for temporary file names could not be allocated.\n");
       exit (WGET_EXIT_GENERIC_ERROR);
     }
-  for (i = 0; i < opt.jobs; ++i)
-    if(!(files[i] = malloc (L_tmpnam * sizeof(char))))
-      {
-        logprintf (LOG_VERBOSE, "Space for temporary file names could not be allocated.\n");
-        exit (WGET_EXIT_GENERIC_ERROR);
-      }
 }
 
 /*  Assign names to temporary files to be used. */
 void
-name_temp_files()
+name_temp_files(char *file_name, long long int file_size)
 {
-  int i;
+  int fd;
+  if(opt.dir_prefix)
+    sprintf(main_file, "%s/%s%s", opt.dir_prefix, file_name, SUFFIX_TEMP);
+  else
+    sprintf(main_file, "%s%s", file_name, SUFFIX_TEMP);
 
-  for (i = 0; i < opt.jobs; ++i)
-    if(!tmpnam(files[i]))
-      {
-        logprintf (LOG_VERBOSE, "Temporary file name could not be assigned.\n");
-        exit (WGET_EXIT_GENERIC_ERROR);
-      }
+  if(!(fd = mkstemp (main_file)))
+    {
+      logprintf (LOG_VERBOSE, "Temporary file name could not be assigned.\n");
+      exit (WGET_EXIT_GENERIC_ERROR);
+    }
+
+  if (posix_fallocate(fd, 0, file_size))
+    {
+      logprintf (LOG_VERBOSE, "File could not be allocated.\n");
+      exit (WGET_EXIT_GENERIC_ERROR);
+    }
+  close (fd);
+
 }
 
-/*  Merge the temporary files in which the chunks are stored to form the
-    resulting file(output). */
+/* Rename the temporary file used to the final file name. */
 void
-merge_temp_files(char *output)
+rename_temp_file (char *new_file_name)
 {
-  FILE *out, *in;
-  int j, ret;
-  void *buf = malloc (MIN_CHUNK_SIZE);
+  rename (main_file, new_file_name);
 
-  out = fopen (output, "wb");
-  for(j = 0; j < opt.jobs; ++j)
-    {
-      in = fopen(files[j],"rb");
-      ret = MIN_CHUNK_SIZE;
-      while(ret == MIN_CHUNK_SIZE)
-        {
-          ret = fread(buf, 1, MIN_CHUNK_SIZE, in);
-          fwrite(buf, 1, ret, out);
-        }
-      fclose(in);
-    }
-  fclose(out);
-  free(buf);
+  free (main_file);
+  main_file = xstrdup (new_file_name);
 }
 
 /* Delete the temporary files used. */
 void
 delete_temp_files()
 {
-  int j = 0;
-
-  while(j < opt.jobs)
-    unlink(files[j++]);
+  unlink (main_file);
 }
 
 /* Clean the space allocated for temporary files data. */
 void
 clean_temp_files()
 {
-  int i;
-
-  for (i = 0; i < opt.jobs; ++i)
-    free (files[i]);
-  free(files);
+  free (main_file);
 }
 
 /* Allocate ranges array to store the ranges data. */
@@ -192,7 +180,7 @@ spawn_thread (struct s_thread_ctx *thread_ctx, int index, int resource)
   if(!thread_ctx[index].url_parsed)
     return 1;
 
-  thread_ctx[index].file = files[index];
+  thread_ctx[index].file = main_file;
   thread_ctx[index].range = ranges + index;
   (thread_ctx[index].range)->is_assigned = 1;
   (thread_ctx[index].range)->resources[resource] = true;

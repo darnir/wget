@@ -1,5 +1,21 @@
 2014-05-07	Jure Grabnar <grabnar12@gmail.com>
 
+	* multi.c: Parallel download is now stored in one temporary file rather than
+	multiple files.
+	(SUFFIX_TEMP): Define.
+	(name_temp_files): Use function mkstemp() instead of tmpnam() which is safer
+	and allows for customized path.
+	(init_temp_files, name_temp_files, delete_temp_files, clean_temp_files):
+	Rewritten to work with one file.
+	(merge_temp_files): Remove.
+	(rename_temp_file): Add.
+	* multi.h: Add global variable (barrier) 'file_rdy_bar'.
+	* retr.c (retrieve_from_file): Change code to work with one temporary file.
+	* http.c (gethttp): Likewise. Use external barrier to sync threads after
+	fopen().
+
+2014-05-07	Jure Grabnar <grabnar12@gmail.com>
+
 	* multi.c: Add condition to fix memory corruption and downloading in parallel
 	in general.
 	* retr.c: Increase buffer size by 1 for '\0' to avoid memory corruption.
