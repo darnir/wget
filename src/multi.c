@@ -173,22 +173,24 @@ clean_ranges()
 int
 spawn_thread (struct s_thread_ctx *thread_ctx, int index, int resource)
 {
-  static pthread_t thread;
-
   thread_ctx[index].url_parsed = url_parse (thread_ctx[index].url,
                        &(thread_ctx[index].url_err), thread_ctx[index].i, true);
   if(!thread_ctx[index].url_parsed)
     return 1;
 
-  thread_ctx[index].file = main_file;
-  thread_ctx[index].range = ranges + index;
-  (thread_ctx[index].range)->is_assigned = 1;
-  (thread_ctx[index].range)->resources[resource] = true;
-
+  if (resource >= 0)
+    {
+      thread_ctx[index].file = main_file;
+      thread_ctx[index].range = ranges + index;
+      (thread_ctx[index].range)->is_assigned = 1;
+      (thread_ctx[index].range)->resources[resource] = true;
+  }
   thread_ctx[index].used = 1;
   thread_ctx[index].terminated = 0;
 
-  return pthread_create (&thread, NULL, segmented_retrieve_url, &thread_ctx[index]);
+  return pthread_create (&thread_ctx[index].thread,
+                         NULL, segmented_retrieve_url,
+                         &thread_ctx[index]);
 }
 
 /* Collects the first thread to terminate and updates struct s_thread_ctx
@@ -209,7 +211,9 @@ collect_thread (sem_t *retr_sem, struct s_thread_ctx *thread_ctx)
       {
         url_free (thread_ctx[k].url_parsed);
         thread_ctx[k].used = 0;
-        (thread_ctx[k].range)->is_assigned = 0;
+        if (thread_ctx[k].range)
+          (thread_ctx[k].range)->is_assigned = 0;
+        pthread_join (thread_ctx[k].thread, NULL);
         return k;
       }
 

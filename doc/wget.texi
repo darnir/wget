@@ -549,6 +549,22 @@ downloaded and will not be kept even after wget terminates.
 See option @samp{--jobs} to enable multi-threaded downloads from metalink
 files, option @samp{--retries} to set a number of retries for downloading a @var{file}
 in case of failure.
+
+@cindex multi
+@item --multi-file=@var{FILE}
+Read @sc{url}s from a local or external @var{file}.  If @samp{-} is
+specified as @var{file}, @sc{url}s are read from the standard input.
+(Use @samp{./-} to read from a file literally named @samp{-}.)
+
+The difference between this and @samp{--input-file} is that this option
+downloads @sc{url}s listed in @var{FILE} concurrently based on number of
+@samp{--jobs}. Therefore @samp{--multi-file} with option @code{--jobs 1} is the
+same as using @samp{--input-file}.
+
+See option @samp{--jobs} to enable multi-threaded downloads and  option
+@samp{--retries} to set a number of retries for downloading a @var{file}
+in case of failure.
+
 @end table
 
 @node Download Options, Directory Options, Logging and Input File Options, Invoking

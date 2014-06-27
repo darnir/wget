@@ -1241,6 +1241,7 @@ static bool pconn_active;
 #define PCONN_LOCK()
 #define PCONN_UNLOCK()
 
+
 static struct {
 #else
 static pthread_mutex_t pconn_mutex;
@@ -1884,6 +1885,10 @@ read_response_body (struct http_stat *hs, int sock, FILE *fp, wgint contlen,
 } while (0)
 #endif /* def __VMS [else] */
 
+static pthread_mutex_t ssl_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define SSL_LOCK() pthread_mutex_lock (&ssl_mutex)
+#define SSL_UNLOCK() pthread_mutex_unlock (&ssl_mutex)
 /* Retrieve a document through HTTP protocol.  It recognizes status
    code, and correctly handles redirections.  It closes the network
    socket.  If it receives an error from the functions below it, it
@@ -1969,6 +1974,7 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
     {
       /* Initialize the SSL context.  After this has once been done,
          it becomes a no-op.  */
+      SSL_LOCK();
       if (!ssl_init ())
         {
           scheme_disable (SCHEME_HTTPS);
@@ -1976,6 +1982,7 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
                      _("Disabling SSL due to encountered errors.\n"));
           return SSLINITFAILED;
         }
+      SSL_UNLOCK();
     }
 #endif /* HAVE_SSL */
 
@@ -3180,7 +3187,7 @@ read_header:
 #endif /* def __VMS [else] */
 
   /* Open the local file.  */
-  if (opt.jobs > 1)
+  if (opt.metalink_file && opt.jobs > 1)
     {
       fp = fopen (hs->local_file, "r+b");
       fseek (fp, hs->restval, SEEK_SET);
@@ -4359,10 +4366,13 @@ http_cleanup (void)
 #else
   struct s_pconn *it = pconn;
 
-  for (; it; it = it->next)
+  while (it)
     {
-      xfree_null (it->host);
-      xzero (it);
+      struct s_pconn *tmp = it;
+      it = it->next;
+
+      xfree_null (tmp->host);
+      xfree_null (tmp);
     }
 #endif
 

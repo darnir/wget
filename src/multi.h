@@ -46,7 +46,7 @@ struct s_thread_ctx
   pthread_t thread;
   int used;
   int terminated;
-  int dt, url_err;
+  int dt, url_err, n_retry;
   char *redirected;
   char *referer;
   struct url *url_parsed;

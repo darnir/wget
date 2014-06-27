@@ -1,3 +1,7 @@
+2014-06-27	Jure Grabnar <grabnar12@gmail.com>
+
+	* wget.texi: Add documentation for --multi-file.
+
 2014-08-03  Giuseppe Scrivano  <gscrivano@gnu.org>
 
 	* wget.texi (Download Options): Fix texinfo warning.

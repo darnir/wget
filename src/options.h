@@ -39,6 +39,7 @@ struct options
   int n_retries;                /* Number of tries per file */
 #endif
   char *metalink_file;          /* Metalink filename */
+  char *multi_file;             /* Multiple file list filename */
 
   bool retry_connrefused;       /* Treat CONNREFUSED as non-fatal. */
   bool background;              /* Whether we should work in background. */

@@ -79,6 +79,10 @@ static pthread_mutex_t pconn_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define PCONN_UNLOCK() pthread_mutex_unlock (&pconn_mutex)
 #endif
+static pthread_mutex_t home_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define HOME_LOCK() pthread_mutex_lock (&home__mutex)
+#define HOME_UNLOCK() pthread_mutex_unlock (&home_mutex)
+
 
 /* Total size of downloaded files.  Used to enforce quota.  */
 SUM_SIZE_INT total_downloaded_bytes;
@@ -1007,6 +1011,62 @@ bail:
   return result;
 }
 
+#define MAX_THREADS_PER_SERVER 2
+
+struct urlpos *
+select_next_url (struct hash_table *ht, struct urlpos *url_list, struct urlpos **selected)
+{
+  if (!url_list)
+    return NULL;
+
+  if (!hash_table_contains (ht, url_list->url->host))
+    {
+      int *tmp = malloc (sizeof (int));
+      *tmp = 1;
+      hash_table_put (ht, strdup (url_list->url->host), tmp);
+      *selected = url_list;
+      return url_list->next;
+    }
+  else
+    {
+      int *value = hash_table_get (ht, url_list->url->host);
+      if (*value < MAX_THREADS_PER_SERVER)
+        {
+          ++(*value);
+          *selected = url_list;
+          return url_list->next;
+        }
+      else
+        {
+          struct urlpos *url_iter;
+          for (url_iter = url_list; url_iter->next; url_iter = url_iter->next)
+            {
+              if (!hash_table_contains (ht, url_iter->next->url->host))
+                {
+                  int *tmp = malloc (sizeof (int));
+                  *tmp = 1;
+                  hash_table_put (ht, strdup (url_iter->next->url->host), tmp);
+                  *selected = url_iter->next;;
+                  url_iter->next = url_iter->next->next;
+                  return url_list;
+                }
+              else
+                {
+                  int *value = hash_table_get (ht, url_iter->next->url->host);
+                  if (*value < MAX_THREADS_PER_SERVER)
+                    {
+                      ++(*value);;
+                      *selected = url_iter->next;
+                      url_iter->next = url_iter->next->next;
+                      return url_list;
+                    }
+                }
+            }
+        }
+    }
+  return url_list;
+}
+
 /* Find the URLs in the file and call retrieve_url() for each of them.
    If HTML is true, treat the file as HTML, and construct the URLs
    accordingly.
@@ -1071,9 +1131,8 @@ retrieve_from_file (const char *file, bool html, int *count)
     input_file = (char *) file;
 
 #ifdef ENABLE_METALINK
-  mlink *mlink = parse_metalink(input_file);
-
-  if(opt.metalink_file && mlink)
+  mlink *mlink;
+  if(opt.metalink_file && (mlink = parse_metalink (input_file)))
     {
       int j, r, ranges_covered, chunk_size, retries, ret, dt=0;
       sem_t retr_sem;
@@ -1303,8 +1362,155 @@ retrieve_from_file (const char *file, bool html, int *count)
       delete_mlink(mlink);
     }
   else
-    {
 #endif
+  if (opt.multi_file)
+    {
+      int i, dt;
+      int active_t = 0;
+      sem_t retr_sem;
+      struct hash_table *ht;
+
+      struct s_thread_ctx *thread_ctx = malloc (opt.jobs * (sizeof (struct s_thread_ctx)));
+      struct urlpos **thread_urlpos = malloc (opt.jobs * (sizeof (struct urlpos)));
+
+      ht = make_string_hash_table (0);
+      url_list = get_urls_file (input_file);
+      sem_init (&retr_sem, 0, 0);
+      for (i = 0; i < opt.jobs; i++)
+        {
+          struct urlpos *selected = NULL;
+          url_list = select_next_url (ht, url_list, &selected);
+          if (!selected)
+            {
+              opt.jobs = i;
+              thread_ctx = realloc (thread_ctx, opt.jobs * sizeof (struct s_thread_ctx));
+              thread_urlpos = realloc (thread_urlpos, opt.jobs * sizeof (struct urlpos));
+              logprintf (LOG_NOTQUIET, "There can only be %d active threads at the "
+                                        "same time.\n", opt.jobs);
+            }
+          else
+            {
+              thread_urlpos[i] = selected;
+              thread_ctx[i].file = NULL;
+              thread_ctx[i].referer = NULL;
+              thread_ctx[i].redirected = NULL;
+              thread_ctx[i].dt = dt;
+              thread_ctx[i].n_retry = 1;
+              thread_ctx[i].i = iri;
+              thread_ctx[i].url = selected->url->url;
+              thread_ctx[i].retr_sem = &retr_sem;
+              thread_ctx[i].range = NULL;
+
+              int ret = spawn_thread (thread_ctx, i, -1);
+              if (ret)
+                {
+                  char *error = url_error (thread_ctx[i].url, thread_ctx[i].url_err);
+                  logprintf (LOG_NOTQUIET, "%s: %s.\n", thread_ctx[i].url, error);
+                  xfree (error);
+                  sem_post (&retr_sem);
+               }
+              active_t++;
+            }
+        }
+
+      while (1)
+        {
+          int t = collect_thread (&retr_sem, thread_ctx);
+          status = thread_ctx[t].status;
+          active_t--;
+
+          if (status != RETROK)
+            {
+                if (thread_ctx[t].n_retry > opt.n_retries)
+                  {
+                    logprintf (LOG_VERBOSE, ("Maximum number of retries for %s"
+                                             "has been reached. %s cannot be"
+                                             "downloaded.\n", thread_ctx[t].url,
+                                             thread_ctx[t].url));
+                  }
+                else
+                  {
+                    thread_ctx[t].n_retry++;
+                    logprintf (LOG_VERBOSE, "Downloading %s failed. Retrying "
+                               "download. (TRY #%d)\n ", thread_ctx[t].url,
+                               thread_ctx[t].n_retry);
+                    continue;
+                  }
+            }
+          else
+            {
+              struct urlpos *u = thread_urlpos[t];
+              int *value = hash_table_get (ht, u->url->host);
+              --(*value);
+
+              ++(*count);
+            }
+
+          /* Free resources */
+          thread_urlpos[t]->next = NULL;
+          free_urlpos (thread_urlpos[t]);
+
+          free (thread_ctx[t].file);
+
+          /* If no thread is active and list is empty, stop collecting. */
+          if (!active_t && !url_list)
+            {
+              break;
+            }
+
+          struct urlpos *selected = NULL;
+          url_list = select_next_url (ht, url_list, &selected);
+
+          if (!selected || (!url_list && !selected))
+            {
+              logprintf (LOG_VERBOSE, "No work to be done. Removing 1 thread.\n");
+              continue;
+            }
+          else
+            {
+              /* Create new thread */
+              struct s_thread_ctx new_thread;
+
+              thread_urlpos[t] = selected;
+              new_thread.file = NULL;
+              new_thread.referer = NULL;
+              new_thread.redirected = NULL;
+              new_thread.dt = dt;
+              new_thread.n_retry = 1;
+              new_thread.i = iri;
+              new_thread.url = selected->url->url;
+              new_thread.retr_sem = &retr_sem;
+              new_thread.range = NULL;
+
+              thread_ctx[t] = new_thread;
+              int ret = spawn_thread (thread_ctx, t, -1);
+              if (ret)
+                {
+                  char *error = url_error (thread_ctx[i].url, thread_ctx[i].url_err);
+                  logprintf (LOG_NOTQUIET, "%s: %s.\n", thread_ctx[i].url, error);
+                  xfree (error);
+                  sem_post (&retr_sem);
+                  continue;
+               }
+              active_t++;
+            }
+        }
+
+      /* Free hash table */
+      hash_table_iterator iter;
+      for (hash_table_iterate (ht, &iter); hash_table_iter_next (&iter); )
+        {
+          xfree (iter.key);
+          xfree (iter.value);
+        }
+      hash_table_destroy (ht);
+
+      xfree (thread_ctx);
+      xfree (thread_urlpos);
+      sem_destroy (&retr_sem);
+    }
+  else
+    {
       url_list = (html ? get_urls_html (input_file, NULL, NULL, iri)
                   : get_urls_file (input_file));
 
@@ -1370,14 +1576,13 @@ Removing file due to --delete-after in retrieve_from_file():\n"));
 
       /* Free the linked list of URL-s.  */
       free_urlpos (url_list);
-#ifdef ENABLE_METALINK
     }
-#endif
 
   iri_free (iri);
 
   return status;
 }
+
 
 /* Print `giving up', or `retrying', depending on the impending
    action.  N1 and N2 are the attempt number and the attempt limit.  */

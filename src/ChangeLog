@@ -1,3 +1,20 @@
+2014-06-27	Jure Grabnar <grabnar12@gmail.com>
+
+	* http.c (SSL_LOCK): Define.
+	(gethttp): Fix race condition.
+	(http_cleanup): Fix segfault.
+	* init.c : Add option --multi-file for downloading multiple files
+	concurrently.
+	* options.h (struct options): Define multi_file.
+	* multi.c (spawn_thread, collect_thread): When 'resources' < 0 each thread
+	downloads one whole file instead of just corresponding chunk.
+	Fix memory leak with pthread_join.
+  * multi.h (struct s_thread_ctx): Define n_retry.
+	* netrc.c (HOME_LOCK): Define.
+	(search_netrc): Fix race condition.
+	(select_next_url): Define new function.
+	(retrieve_from_file): Add code for multiple files.
+
 2014-05-07	Jure Grabnar <grabnar12@gmail.com>
 
 	* multi.c: Parallel download is now stored in one temporary file rather than
