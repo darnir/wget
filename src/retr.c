@@ -1075,8 +1075,7 @@ retrieve_from_file (const char *file, bool html, int *count)
 
   if(opt.metalink_file && mlink)
     {
-      int i, j, r, ranges_covered, chunk_size, url_err, retries, ret, dt=0;
-      pthread_t thread;
+      int j, r, ranges_covered, chunk_size, retries, ret, dt=0;
       sem_t retr_sem;
       uerr_t status;
       mlink_file* file;

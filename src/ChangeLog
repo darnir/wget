@@ -1,5 +1,23 @@
 2014-03-31	Jure Grabnar  <grabnar12@gmail.com>
 
+	* iri.h: Fix macro parse_charset(str) to not cause 'left-hand operand of
+	comma expression has no effect'.
+	* metalink.c (parse_metalink): Remove unused variable 'piece_hash'.
+	(elect_resources): Add parentheses to assigment.
+	(elect_checksums): Same. Add cast to (unsigned char *).
+	(veriy_file_hash): Add casts to (char *).
+	* multi.h: Remove prototype of static function segmented_retrieve_url().
+	* multi.c: Include "retr.h". Add prototype of static function
+	segmented_retrieve_url();
+	(collect_thread): Add return value to suppress compiler warning.
+	(segmented_retrieve_url): Same.
+	* recur.c (start_retrieve_url): Same.
+	* progress.c: Removed unused variable 'header'.
+	* retr.c (retrieve_from_file): Remove unused variables 'i', 'url_err',
+	'retries'.
+
+2014-03-31	Jure Grabnar  <grabnar12@gmail.com>
+
 	* metalink.h: Change type of 'mlink_resource.type' to enum url_scheme.
 	Include url.h.
 	* metalink.c (parse_metalink): Find out resources' protocol type from URL if

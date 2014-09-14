@@ -300,7 +300,6 @@ progress_update (void *progress, wgint howmuch, double dltime)
 void
 progress_finish (void *progress, double dltime)
 {
-  struct progress_header *header = progress;
     {
       struct progress_header *it, *prev = NULL;
 

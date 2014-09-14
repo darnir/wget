@@ -84,6 +84,4 @@ int spawn_thread (struct s_thread_ctx*, int, int);
 
 int collect_thread (sem_t *, struct s_thread_ctx *);
 
-static void * segmented_retrieve_url (void *);
-
 #endif /* MULTI_H */

@@ -185,7 +185,6 @@ parse_metalink(char *input_file)
               chunk_sum->type = (chunk_checksum->type ? xstrdup (chunk_checksum->type) : NULL);
               for (piece_hashes = chunk_checksum->piece_hashes; *piece_hashes; ++piece_hashes)
                 {
-                  mlink_piece_hash piece_hash;
                   if(!chunk_checksum->type)
                     {
                       logprintf (LOG_VERBOSE, "PARSE METALINK: Skipping chunk checksum"
@@ -217,7 +216,7 @@ elect_resources (mlink *mlink)
       if (!res)
         continue;
 
-      while (res_next = res->next)
+      while ((res_next = res->next))
         {
           if (schemes_are_similar_p (res_next->type, SCHEME_INVALID))
             {
@@ -255,7 +254,7 @@ elect_checksums (mlink *mlink)
       if (!csum)
         continue;
 
-      while (csum_next = csum->next)
+      while ((csum_next = csum->next))
         {
           /* Traverse supported hash types & break if csum->type is the same. */
           for (i = 0; i < HASH_TYPES; ++i)
@@ -426,7 +425,7 @@ verify_file_hash (const char *filename, mlink_checksum *checksums)
               return 1;
             }
           else
-            metalink_hashes[j] = checksum->hash;
+            metalink_hashes[j] = (unsigned char *) checksum->hash;
         }
 
   for (i = 0; !metalink_hashes[i]; ++i);
@@ -461,10 +460,10 @@ verify_file_hash (const char *filename, mlink_checksum *checksums)
 
   /* Turn byte-form hash to hex form. */
   for(j = 0 ; j < digest_sizes[req_type]; ++j)
-    sprintf(file_hash + 2 * j, "%02x", hash_raw[j]);
+    sprintf((char *) file_hash + 2 * j, "%02x", hash_raw[j]);
 
   lower_hex_case(metalink_hashes[req_type], 2 * digest_sizes[req_type]);
-  if (strcmp(metalink_hashes[req_type], file_hash))
+  if (strcmp((char *) metalink_hashes[req_type], (char *) file_hash))
     {
       logprintf (LOG_VERBOSE, "Verifying(%s) failed: %s hashes are different.\n",
                  filename, supported_hashes[i]);
