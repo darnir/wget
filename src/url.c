@@ -440,6 +440,28 @@ url_scheme (const char *url)
   return SCHEME_INVALID;
 }
 
+/* Returns the scheme type from string
+   if the scheme is supported, or
+   SCHEME_INVALID if not.  */
+
+enum url_scheme
+url_scheme_str_to_enum (const char *str)
+{
+  int i;
+
+  for (i = 0; supported_schemes[i].name; i++)
+    if (0 == strncasecmp (str, supported_schemes[i].name,
+                          strlen (supported_schemes[i].name)))
+      {
+        if (!(supported_schemes[i].flags & scm_disabled))
+          return (enum url_scheme) i;
+        else
+          return SCHEME_INVALID;
+      }
+
+  return SCHEME_INVALID;
+}
+
 #define SCHEME_CHAR(ch) (c_isalnum (ch) || (ch) == '-' || (ch) == '+')
 
 /* Return 1 if the URL begins with any "scheme", 0 otherwise.  As

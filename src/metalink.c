@@ -42,6 +42,7 @@ as that of the covered work.  */
 #include "sha256.h"
 #include "metalink.h"
 #include "utils.h"
+#include "url.h"
 
 
 #define HASH_TYPES 3
@@ -119,7 +120,7 @@ parse_metalink(char *input_file)
       file->chunk_checksum = NULL;
       file->num_of_res = file->num_of_checksums = 0;
 
-      for (resources = (*files)->resources; *resources; ++resources)
+      for (resources = (*files)->resources; resources && *resources; ++resources)
         {
           mlink_resource *resource;
 
@@ -134,7 +135,10 @@ parse_metalink(char *input_file)
           ++(file->num_of_res);
 
           resource->url = xstrdup ((*resources)->url);
-          resource->type = ((*resources)->type ? xstrdup ((*resources)->type) : NULL);
+          if ((*resources)->type)
+            resource->type = url_scheme_str_to_enum ((*resources)->type);
+          else
+            resource->type = url_scheme (resource->url);
           resource->location = ((*resources)->location ? xstrdup ((*resources)->location) : NULL);
           resource->preference = (*resources)->preference;
           resource->maxconnections = (*resources)->maxconnections;
@@ -143,7 +147,7 @@ parse_metalink(char *input_file)
           (file->resources) = resource;
         }
 
-      for (checksums = (*files)->checksums; *checksums; ++checksums)
+      for (checksums = (*files)->checksums; checksums && *checksums; ++checksums)
         {
           mlink_checksum *checksum = malloc (sizeof(mlink_checksum));
 
@@ -215,19 +219,23 @@ elect_resources (mlink *mlink)
 
       while (res_next = res->next)
         {
-          if (strcmp(res_next->type, "ftp") && strcmp(res_next->type, "http"))
+          if (schemes_are_similar_p (res_next->type, SCHEME_INVALID))
             {
               res->next = res_next->next;
               free(res_next);
+
+              --(file->num_of_res);
             }
           else
             res = res_next;
         }
       res = file->resources;
-      if (strcmp(res->type, "ftp") && strcmp(res->type, "http"))
+      if (schemes_are_similar_p (res->type, SCHEME_INVALID))
         {
           file->resources = res->next;
-          free(res);
+          free (res);
+
+          --(file->num_of_res);
         }
     }
 }
@@ -301,7 +309,6 @@ delete_mlink(mlink *metalink)
       while (res)
         {
           xfree_null (res->url);
-          xfree_null (res->type);
           xfree_null (res->location);
 
           res_temp = res;

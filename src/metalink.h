@@ -32,6 +32,8 @@ as that of the covered work.  */
 #ifndef MLINK_H
 #define MLINK_H
 
+#include "url.h"
+
 typedef struct metalink_piece_hash
 {
   struct metalink_piece_hash *next;
@@ -53,7 +55,7 @@ typedef struct metalink_resource
   struct metalink_resource *next;
 
   char *url;
-  char *type;
+  enum url_scheme type;
   char *location;
   int preference;
   int maxconnections;

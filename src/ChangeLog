@@ -1,3 +1,17 @@
+2014-03-31	Jure Grabnar  <grabnar12@gmail.com>
+
+	* metalink.h: Change type of 'mlink_resource.type' to enum url_scheme.
+	Include url.h.
+	* metalink.c (parse_metalink): Find out resources' protocol type from URL if
+	not present in <url> tag in metalink file.
+	Include url.h.
+	(elect_resources): Do not crash when protocol type is NULL.
+	Count number of resources still available, if zero, assign NULL.
+	* url.c:
+	(url_scheme_str_to_enum): New function: extracts protocol type from string
+	without "://" suffix.
+	* retr.c: Add check for number of resources available. Do not crash when zero.
+
 2014-07-21  Giuseppe Scrivano  <gscrivan@redhat.com>
 
 	* Makefile.am (wget_SOURCES): Remove space-tab indentation.
