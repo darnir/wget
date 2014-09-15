@@ -920,7 +920,7 @@ FNNAME_WTHREADS(register_delete_file) (const char *file)
 /* Register that FILE is an HTML file that has been downloaded. */
 
 void
-FNNAME_WTHREADS(register_html) (const char *url, const char *file)
+FNNAME_WTHREADS(register_html) (const char *url _GL_UNUSED, const char *file)
 {
   if (!downloaded_html_set)
     downloaded_html_set = make_string_hash_table (0);
@@ -930,7 +930,7 @@ FNNAME_WTHREADS(register_html) (const char *url, const char *file)
 /* Register that FILE is a CSS file that has been downloaded. */
 
 void
-FNNAME_WTHREADS(register_css) (const char *url, const char *file)
+FNNAME_WTHREADS(register_css) (const char *url _GL_UNUSED, const char *file)
 {
   if (!downloaded_css_set)
     downloaded_css_set = make_string_hash_table (0);

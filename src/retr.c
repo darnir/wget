@@ -58,11 +58,6 @@ as that of the covered work.  */
 #include "html-url.h"
 #include "iri.h"
 
-static pthread_mutex_t home_mutex = PTHREAD_MUTEX_INITIALIZER;
-#define HOME_LOCK() pthread_mutex_lock (&home__mutex)
-#define HOME_UNLOCK() pthread_mutex_unlock (&home_mutex)
-
-
 /* Total size of downloaded files.  Used to enforce quota.  */
 SUM_SIZE_INT total_downloaded_bytes;
 
@@ -1104,8 +1099,8 @@ retrieve_from_file (const char *file, bool html, int *count)
 
   if (opt.multi_file)
     {
-      int i, dt;
-      int active_t = 0;
+      unsigned int i;
+      int dt = 0, active_t = 0;
       sem_t retr_sem;
       struct hash_table *ht;
 

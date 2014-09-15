@@ -133,8 +133,8 @@ int
 fill_ranges_data(int num_of_resources, long long int file_size,
                  long int chunk_size)
 {
-  int i, r;
-  i = 0;
+  unsigned int i = 0;
+  int r;
   do
   {
       ranges[i].first_byte = i * chunk_size;
@@ -155,7 +155,7 @@ fill_ranges_data(int num_of_resources, long long int file_size,
 void
 clean_range_res_data()
 {
-  int i;
+  unsigned int i;
   for (i = 0; i < opt.jobs; ++i)
     free (ranges[i].resources);
 }
@@ -201,7 +201,8 @@ spawn_thread (struct s_thread_ctx *thread_ctx, int index, int resource)
 int
 collect_thread (sem_t *retr_sem, struct s_thread_ctx *thread_ctx)
 {
-  int k, ret;
+  unsigned int k;
+  int ret;
   do
     ret = sem_wait (retr_sem);
   while (ret < 0 && errno == EINTR);

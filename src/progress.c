@@ -485,7 +485,7 @@ dot_update (void *progress, wgint howmuch, double dltime)
 }
 
 static void
-dot_draw (void *progress, bool force)
+dot_draw (void *progress, bool force _GL_UNUSED)
 {
   struct dot_progress *dp = progress;
   int dot_bytes = opt.dot_bytes;
@@ -745,7 +745,7 @@ bar_draw (void *progress, bool force)
 }
 
 static void
-bar_finish (void *progress, double dltime)
+bar_finish (void *progress, double dltime _GL_UNUSED)
 {
   struct bar_progress *bp = progress;
 

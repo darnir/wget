@@ -37,14 +37,17 @@ as that of the covered work.  */
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "utils.h"
 #include "netrc.h"
 #include "init.h"
 
 #define NETRC_FILE_NAME ".netrc"
-#define HOME_LOCK()
-#define HOME_UNLOCK()
+
+static pthread_mutex_t home_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define HOME_LOCK() pthread_mutex_lock (&home_mutex)
+#define HOME_UNLOCK() pthread_mutex_unlock (&home_mutex)
 
 static acc_t *netrc_list;
 

@@ -288,7 +288,7 @@ struct options
                                    name. */
   bool report_bps;              /*Output bandwidth in bits format*/
 
-  int jobs;                 /* How many threads use at the same time.  */
+  unsigned int jobs;                 /* How many threads use at the same time.  */
 };
 
 extern struct options opt;
