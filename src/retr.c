@@ -1423,10 +1423,10 @@ retrieve_from_file (const char *file, bool html, int *count)
             {
                 if (thread_ctx[t].n_retry > opt.n_retries)
                   {
-                    logprintf (LOG_VERBOSE, ("Maximum number of retries for %s"
+                    logprintf (LOG_VERBOSE, _("Maximum number of retries for %s"
                                              "has been reached. %s cannot be"
-                                             "downloaded.\n", thread_ctx[t].url,
-                                             thread_ctx[t].url));
+                                             "downloaded.\n"), thread_ctx[t].url,
+                                             thread_ctx[t].url);
                   }
                 else
                   {

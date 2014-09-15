@@ -370,7 +370,7 @@ defaults (void)
   opt.prefer_family = prefer_none;
   opt.allow_cache = true;
 
-  opt.read_timeout = 900;
+  opt.read_timeout = 0;
   opt.use_robots = true;
 
   opt.remove_listing = true;
