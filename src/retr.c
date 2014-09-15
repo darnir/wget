@@ -40,17 +40,6 @@ as that of the covered work.  */
 #ifdef ENABLE_THREADS
 #include <pthread.h>
 #include <semaphore.h>
-#endif
-#ifdef ENABLE_METALINK
-#include <metalink/metalink_parser.h>
-#include <metalink/metalink_types.h>
-#ifdef VMS
-# include <unixio.h>            /* For delete(). */
-#endif
-
-#include "metalink.h"
-#endif
-#ifdef ENABLE_THREADS
 #include "multi.h"
 #endif
 #include "exits.h"
@@ -69,16 +58,6 @@ as that of the covered work.  */
 #include "html-url.h"
 #include "iri.h"
 
-#ifdef ENABLE_METALINK
-static pthread_mutex_t pconn_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-#define IS_IO_ERROR(status) status == FOPENERR || status == WRITEFAILED || \
-          status == UNLINKERR || status == FWRITEERR || status == FOPEN_EXCL_ERR
-
-#define PCONN_LOCK() pthread_mutex_lock (&pconn_mutex)
-
-#define PCONN_UNLOCK() pthread_mutex_unlock (&pconn_mutex)
-#endif
 static pthread_mutex_t home_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define HOME_LOCK() pthread_mutex_lock (&home__mutex)
 #define HOME_UNLOCK() pthread_mutex_unlock (&home_mutex)
@@ -766,13 +745,6 @@ retrieve_url (struct url * orig_parsed, const char *origurl, char **file,
   if (newloc)
     *newloc = NULL;
 
-#ifndef ENABLE_METALINK
-  /* Note that, each and every call to retrieve_url(), except the ones made by
-     functions relevant to metalink support, the value of *file is NULL. */
-  if (file)
-    *file = NULL;
-#endif
-
   if (!refurl)
     refurl = opt.referer;
 
@@ -1130,239 +1102,6 @@ retrieve_from_file (const char *file, bool html, int *count)
   else
     input_file = (char *) file;
 
-#ifdef ENABLE_METALINK
-  mlink *mlink;
-  if(opt.metalink_file && (mlink = parse_metalink (input_file)))
-    {
-      int j, r, ranges_covered, chunk_size, retries, ret, dt=0;
-      sem_t retr_sem;
-      uerr_t status;
-      mlink_file* file;
-      mlink_resource *resource;
-      struct s_thread_ctx *thread_ctx;
-
-      /* Wget supports HTTP&FTP, and Metalink supports MD5, SHA1 & SHA-256. */
-      elect_resources (mlink);
-      elect_checksums (mlink);
-
-      init_temp_files(mlink->files->name);
-      init_ranges ();
-      thread_ctx = malloc (opt.jobs * (sizeof *thread_ctx));
-
-      retries = 0;
-      file = mlink->files;
-      while (file)
-        {
-          if (!file->num_of_res)
-            {
-              logprintf (LOG_VERBOSE, _("Downloading %s failed. File could "
-                                        "not be downloaded from any of the "
-                                        "URLs listed in metalink file.\n"),
-                         file->name);
-              file = file->next;
-              continue;
-            }
-
-          memset (thread_ctx, '\0', opt.jobs * (sizeof *thread_ctx));
-
-          /* If chunk_size is too small, set it equal to MIN_CHUNK_SIZE. */
-          chunk_size = (file->size) / opt.jobs;
-          if(chunk_size < MIN_CHUNK_SIZE)
-            chunk_size = MIN_CHUNK_SIZE;
-
-          j = fill_ranges_data (file->num_of_res, file->size, chunk_size);
-
-          /* If chunk_size was set to MIN_CHUNK_SIZE, opt.jobs should be corrected. */
-          if (j < opt.jobs)
-            opt.jobs = j;
-
-          name_temp_files (file->name, file->size);
-
-          sem_init (&retr_sem, 0, 0);
-          j = ranges_covered = 0;
-          resource = file->resources;
-
-          /* Assign values to thread_ctx[] elements and spawn threads that will
-             conduct the download. */
-          for (r = 0; r < opt.jobs; ++r)
-            {
-              if (!resource)
-                {
-                  j = 0;
-                  resource = file->resources;
-                }
-
-              thread_ctx[r].referer = NULL;
-              thread_ctx[r].redirected = NULL;
-              thread_ctx[r].dt = dt;
-              thread_ctx[r].i = iri;
-              thread_ctx[r].url = resource->url;
-              thread_ctx[r].retr_sem = &retr_sem;
-
-              ret = spawn_thread (thread_ctx, r, j);
-              if (ret)
-                {
-                  /* If thread creation is unsuccessful */
-                  char *error = url_error (thread_ctx[r].url, thread_ctx[r].url_err);
-                  logprintf (LOG_NOTQUIET, "%s: %s.\n", thread_ctx[r].url, error);
-                  xfree (error);
-                  free (thread_ctx);
-                  clean_range_res_data ();
-                  clean_ranges ();
-                  clean_temp_files ();
-                  return URLERROR;
-                }
-              ++j;
-              resource = resource->next;
-            }
-
-          /* Until all the ranges are covered, collect threads. */
-          while (ranges_covered < opt.jobs)
-            {
-              r = collect_thread (&retr_sem, thread_ctx);
-              ++ranges_covered;
-
-              status = thread_ctx[r].status;
-
-              /* Check return status of thread for errors. */
-              if (IS_IO_ERROR (status))
-                {
-                  /* The error is of type WGET_EXIT_IO_FAIL given in exits.c.
-                     No fallbacking is needed for this type of error. */
-                  inform_exit_status (status);
-                  break;
-                }
-              else if(status != RETROK)
-                {
-                  int error_severity;
-                  PCONN_LOCK ();
-
-                  /* Pick the least severe error.*/
-                  error_severity = get_exit_status();
-                  inform_exit_status ((thread_ctx[r].range)->status_least_severe);
-                  if(get_exit_status() != error_severity)
-                    (thread_ctx[r].range)->status_least_severe = status;
-
-                  PCONN_UNLOCK ();
-
-                  /* Look for resource from which downloading this range is not
-                     tried. */
-                  j = 0;
-                  resource = file->resources;
-                  while (j < file->num_of_res)
-                    {
-                      if (!((thread_ctx[r].range)->resources)[j])
-                        break;
-                      ++j;
-                      resource = resource -> next;
-                    }
-                  /* If there is such a resource, then update the range values
-                     to try that not-tried resource and spawn thread.
-                     If all the resources are exhausted, stop collecting the
-                     threads, as the download failed. */
-                  if (j < file->num_of_res)
-                    {
-                      if ((thread_ctx[r].range)->bytes_covered)
-                        {
-                          thread_ctx[r].url = resource->url;
-                          (thread_ctx[r].range)->first_byte =
-                            (thread_ctx[r].range)->bytes_covered;
-                          (thread_ctx[r].range)->bytes_covered = 0;
-                        }
-                      --ranges_covered;
-                      ret = spawn_thread (thread_ctx, r, j);
-                      if (ret)
-                        {
-                          /* If thread creation is unsuccessful */
-                          char *error = url_error (thread_ctx[r].url, thread_ctx[r].url_err);
-                          logprintf (LOG_NOTQUIET, "%s: %s.\n", thread_ctx[r].url, error);
-                          xfree (error);
-                          free (thread_ctx);
-                          clean_range_res_data ();
-                          clean_ranges ();
-                          clean_temp_files ();
-                          return URLERROR;
-                        }
-                    }
-                  else
-                    break;
-                }
-            }
-
-          sem_destroy(&retr_sem);
-
-          /* Check the download status. If conditions are suitable, retry. */
-          if (status != RETROK)
-            {
-              logprintf (LOG_VERBOSE, _("Downloading %s failed. Chunk %d could "
-                                        "not be downloaded from any of the "
-                                        "URLs listed in metalink file.\n"),
-                         file->name, r);
-
-              /* Failed downloads should only be retried if the error causing
-                 the failure is not an IO error. */
-              if (!(IS_IO_ERROR((thread_ctx[r].range)->status_least_severe)))
-                {
-                  if(retries  < opt.n_retries)
-                    {
-                      logprintf (LOG_VERBOSE,
-                                 _("Retrying to download(%s). (TRY #%d)\n"),
-                                 file->name, ++retries + 1);
-                      continue;
-                    }
-                }
-            }
-          else
-            {
-              char *file_path;
-              int res;
-              /* Form the actual file to be downloaded and verify hash. */
-              file_path = malloc((opt.dir_prefix ? strlen(opt.dir_prefix) : 0)
-                               + strlen(file->name) + (sizeof "/") + 1);
-              if(opt.dir_prefix)
-                sprintf(file_path, "%s/%s", opt.dir_prefix, file->name);
-              else
-                sprintf(file_path, "%s", file->name);
-
-              rename_temp_file (file_path);
-              res = verify_file_hash(file_path, file->checksums);
-              free (file_path);
-              if(!res)
-                {
-                  ++*count;
-                  logprintf (LOG_VERBOSE, _("Verifying(%s) succeeded.\n"),
-                               file->name);
-                }
-              else if(res < 0)
-                {
-                  logprintf (LOG_VERBOSE, _("Verifying(%s) failed.\n"),
-                             file->name);
-                  if(retries  < opt.n_retries)
-                    {
-                      logprintf (LOG_VERBOSE,
-                                 _("Retrying to download(%s). (TRY #%d)\n"),
-                                 file->name, ++retries + 1);
-                      delete_temp_files();
-                      continue;
-                    }
-                }
-            }
-
-          clean_range_res_data();
-          if (opt.quota && total_downloaded_bytes > opt.quota)
-            {
-              status = QUOTEXC;
-              break;
-            }
-          file = file->next;
-        }
-
-      free(thread_ctx);
-      clean_ranges ();
-      delete_mlink(mlink);
-    }
-  else
-#endif
   if (opt.multi_file)
     {
       int i, dt;
@@ -1421,7 +1160,7 @@ retrieve_from_file (const char *file, bool html, int *count)
 
           if (status != RETROK)
             {
-                if (thread_ctx[t].n_retry > opt.n_retries)
+                if (thread_ctx[t].n_retry > opt.ntry)
                   {
                     logprintf (LOG_VERBOSE, _("Maximum number of retries for %s"
                                              "has been reached. %s cannot be"

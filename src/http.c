@@ -2789,7 +2789,7 @@ read_header:
           REGISTER_PERSISTENT_CONNECTION (4);
           return RETRUNNEEDED;
         }
-      else if (!ALLOW_CLOBBER && !opt.metalink_file)
+      else if (!ALLOW_CLOBBER)
         {
           char *unique = unique_name (hs->local_file, true);
           if (unique != hs->local_file)
@@ -3187,12 +3187,7 @@ read_header:
 #endif /* def __VMS [else] */
 
   /* Open the local file.  */
-  if (opt.metalink_file && opt.jobs > 1)
-    {
-      fp = fopen (hs->local_file, "r+b");
-      fseek (fp, hs->restval, SEEK_SET);
-    }
-  else if (!output_stream)
+  if (!output_stream)
     {
       mkalldirs (hs->local_file);
       if (opt.backups)
@@ -3317,14 +3312,12 @@ http_loop (struct url *u, struct url *original_url, char **newloc,
     force_full_retrieve = true;
 
 
-#ifndef ENABLE_METALINK
   /* Assert that no value for *LOCAL_FILE was passed. */
   assert (local_file == NULL || *local_file == NULL);
 
   /* Set LOCAL_FILE parameter. */
   if (local_file && opt.output_document)
     *local_file = HYPHENP (opt.output_document) ? NULL : xstrdup (opt.output_document);
-#endif
 
   /* Reset NEWLOC parameter. */
   *newloc = NULL;

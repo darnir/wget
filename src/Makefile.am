@@ -34,10 +34,6 @@
 if IRI_IS_ENABLED
 IRI_OBJ = iri.c
 endif
-if METALINK_IS_ENABLED
-METALINK_OBJ = metalink.c
-METALINK_HEADER = metalink.h
-endif
 if THREADS_ARE_ENABLED
 THREAD_OBJ = multi.c
 MULTI_HEADER = multi.h
@@ -47,7 +43,7 @@ endif
 DEFS     += -DSYSTEM_WGETRC=\"$(sysconfdir)/wgetrc\" -DLOCALEDIR=\"$(localedir)\"
 LIBS     += $(LIBICONV) $(LIBINTL) $(LIB_CLOCK_GETTIME)
 
-EXTRA_DIST = css.l css.c css_.c build_info.c.in iri.c multi.c multi.h metalink.c metalink.h
+EXTRA_DIST = css.l css.c css_.c build_info.c.in iri.c multi.c multi.h
 
 bin_PROGRAMS = wget
 
@@ -57,13 +53,13 @@ wget_SOURCES = cmpt.c connect.c convert.c cookies.c ftp.c			\
 	       http.c init.c log.c main.c netrc.c progress.c ptimer.c		\
 	       recur.c res.c retr.c spider.c url.c warc.c			\
 	       utils.c exits.c build_info.c $(IRI_OBJ)				\
-	       $(THREAD_OBJ) $(METALINK_OBJ)					\
+	       $(THREAD_OBJ) \
 	       css-url.h css-tokens.h connect.h convert.h cookies.h		\
 	       ftp.h hash.h host.h html-parse.h html-url.h			\
 	       http.h http-ntlm.h init.h log.h mswindows.h netrc.h		\
 	       options.h progress.h ptimer.h recur.h res.h retr.h		\
 	       spider.h ssl.h sysdep.h url.h warc.h utils.h wget.h iri.h	\
-	       exits.h gettext.h $(THREAD_HEADER) $(METALINK_HEADER)
+	       exits.h gettext.h $(THREAD_HEADER)
 
 am__wget_SOURCES_DIST = $(wget_SOURCES)
 am__libunittest_a_SOURCES_DIST = $(wget_SOURCES)

@@ -100,12 +100,6 @@ ENABLE_DEBUG=$enableval, ENABLE_DEBUG=yes)
 test x"${ENABLE_DEBUG}" = xyes && AC_DEFINE([ENABLE_DEBUG], 1,
    [Define if you want the debug output support compiled in.])
 
-AC_ARG_ENABLE(metalink,
-[  --disable-metalink      disable support for metalink file format],
-ENABLE_METALINK=$enableval, ENABLE_METALINK=no)
-test x"${ENABLE_METALINK}" = xyes && AC_DEFINE([ENABLE_METALINK], 1,
-   [Define if you want the metalink file format support compiled in.])
-
 AC_ARG_ENABLE(race-detection,
 [  --enable-race-detection enable support for detecting race conditions],
 ENABLE_RACES=$enableval, ENABLE_RACES=no)
@@ -406,46 +400,6 @@ AS_IF([test x"$ENABLE_RACES" != xno],[
    LDFLAGS="$LDFLAGS -fsanitize=thread -pie";
 ])
 
-AS_IF([test x"$ENABLE_METALINK" != xno],[
-  dnl If metalink support is requested
-  PKG_CHECK_MODULES(LIBMETALINK, libmetalink, [
-    dnl If metalink module is found
-    LIBS="$LIBMETALINK_LIBS $LIBS"
-    CFLAGS="$LIBMETALINK_CFLAGS $CFLAGS"
-    AC_DEFINE([ENABLE_METALINK], 1,
-     [Define if you want the metalink support compiled in.])
-
-    AC_CHECK_LIB(metalink, metalink_parse_file, [
-      if test x"$DISABLE_THREADS" == xyes
-      then
-        AC_MSG_ERROR([Metalink support depends on threads, which are requested to be disabled.])
-      elif test "X$threads" != "Xyes"
-      then
-        AC_MSG_ERROR([Metalink support depends on threads, support for which could not be enabled.])
-      else
-        metalink=yes
-        AC_MSG_NOTICE([compiling in support for metalink])
-      fi
-    ], [
-      if test x"$ENABLE_METALINK" == xyes
-      then
-        AC_MSG_ERROR([Could not find the metalink_parse_file function in libmetalink.])
-      fi
-    ])
-  ], [
-    dnl If metalink module is not found
-    if test x"$ENABLE_METALINK" == xyes
-    then
-      AC_MSG_ERROR([libmetalink not found])
-    fi
-  ])
-],[
-  dnl If metalink support is not requested
-  metalink=no
-  AC_MSG_NOTICE([compiling without support for metalink])
-])
-
-
 dnl **********************************************************************
 dnl Checks for IPv6
 dnl **********************************************************************
@@ -652,7 +606,6 @@ AC_CHECK_HEADER(pcre.h,
 
 dnl Needed by src/Makefile.am
 AM_CONDITIONAL([IRI_IS_ENABLED], [test "X$iri" == "Xyes"])
-AM_CONDITIONAL([METALINK_IS_ENABLED], [test "X$metalink" == "Xyes"])
 AM_CONDITIONAL([THREADS_ARE_ENABLED], [test "X$threads" == "Xyes"])
 AM_CONDITIONAL([RACE_CHECKING_IS_ENABLED], [test "X$race-detection" == "Xyes"])
 
@@ -680,7 +633,6 @@ AC_MSG_NOTICE([Summary of build options:
   Digest:            $ENABLE_DIGEST
   NTLM:              $ENABLE_NTLM
   OPIE:              $ENABLE_OPIE
-  Metalink:          $ENABLE_METALINK
   Debugging:         $ENABLE_DEBUG
   Race Detection:    $ENABLE_RACES
 ])

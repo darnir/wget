@@ -217,9 +217,6 @@ static const struct {
   { "logfile",          &opt.lfilename,         cmd_file },
   { "login",            &opt.ftp_user,          cmd_string },/* deprecated*/
   { "maxredirect",      &opt.max_redirect,      cmd_number },
-#ifdef ENABLE_METALINK
-  { "metalink",         &opt.metalink_file,     cmd_file },
-#endif
   { "method",           &opt.method,            cmd_string_uppercase },
   { "mirror",           NULL,                   cmd_spec_mirror },
   { "multi",            &opt.multi_file,        cmd_file },
@@ -265,9 +262,6 @@ static const struct {
   { "removelisting",    &opt.remove_listing,    cmd_boolean },
   { "reportspeed",             &opt.report_bps, cmd_spec_report_speed},
   { "restrictfilenames", NULL,                  cmd_spec_restrict_file_names },
-#ifdef ENABLE_METALINK
-  { "retries",          &opt.n_retries,         cmd_number_inf },
-#endif
   { "retrsymlinks",     &opt.retr_symlinks,     cmd_boolean },
   { "retryconnrefused", &opt.retry_connrefused, cmd_boolean },
   { "robots",           &opt.use_robots,        cmd_boolean },
@@ -353,9 +347,6 @@ defaults (void)
   opt.ntry = 20;
 #ifdef ENABLE_THREADS
   opt.jobs = 1;
-#endif
-#ifdef ENABLE_METALINK
-  opt.n_retries = 1;
 #endif
   opt.reclevel = 5;
   opt.add_hostdir = true;

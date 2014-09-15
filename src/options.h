@@ -35,10 +35,6 @@ struct options
                                    hence not boolean.) */
   bool quiet;                   /* Are we quiet? */
   int ntry;                     /* Number of tries per URL */
-#ifdef ENABLE_METALINK
-  int n_retries;                /* Number of tries per file */
-#endif
-  char *metalink_file;          /* Metalink filename */
   char *multi_file;             /* Multiple file list filename */
 
   bool retry_connrefused;       /* Treat CONNREFUSED as non-fatal. */

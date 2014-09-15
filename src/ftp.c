@@ -1306,11 +1306,6 @@ Error in server response, closing control connection.\n"));
 
   /* Get the contents of the document.  */
   flags = 0;
-#ifdef ENABLE_METALINK
-  if (opt.metalink_file && expected_bytes)
-    /* If content-length is present, read that much; otherwise, read until EOF. */
-    flags |= rb_read_exactly;
-#endif
   if (restval && rest_failed)
     flags |= rb_skip_startpos;
   rd_size = 0;
@@ -1376,7 +1371,7 @@ Error in server response, closing control connection.\n"));
      TODO: Make sure exempting metalink downloads from this check does not cause
      any troubles.
      */
-  if (*respline != '2' && !opt.metalink_file)
+  if (*respline != '2')
     {
       xfree (respline);
       if (res != -1)

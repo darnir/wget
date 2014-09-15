@@ -229,9 +229,6 @@ static struct cmdline_option option_data[] =
     { "load-cookies", 0, OPT_VALUE, "loadcookies", -1 },
     { "local-encoding", 0, OPT_VALUE, "localencoding", -1 },
     { "max-redirect", 0, OPT_VALUE, "maxredirect", -1 },
-#ifdef ENABLE_METALINK
-    { "metalink-file", 0, OPT_VALUE, "metalink", -1 },
-#endif
     { "method", 0, OPT_VALUE, "method", -1 },
     { "mirror", 'm', OPT_BOOLEAN, "mirror", -1 },
     { "multi-file", 0, OPT_VALUE, "multi", -1},
@@ -275,9 +272,6 @@ static struct cmdline_option option_data[] =
     { "report-speed", 0, OPT_BOOLEAN, "reportspeed", -1 },
     { "restrict-file-names", 0, OPT_BOOLEAN, "restrictfilenames", -1 },
     { "retr-symlinks", 0, OPT_BOOLEAN, "retrsymlinks", -1 },
-#ifdef ENABLE_METALINK
-    { "retries", 0, OPT_VALUE, "retries", -1 },
-#endif
     { "retry-connrefused", 0, OPT_BOOLEAN, "retryconnrefused", -1 },
     { "save-cookies", 0, OPT_VALUE, "savecookies", -1 },
     { "save-headers", 0, OPT_BOOLEAN, "saveheaders", -1 },
@@ -486,18 +480,8 @@ Logging and input file:\n"),
     N_("\
        --multi-file          download URLs found in FILE concurrently.\n"),
 #endif
-#ifdef ENABLE_METALINK
-    N_("\
-       --metalink-file       download URLs found in local or external metalink FILE.\n"),
-#endif
-
     N_("\
 Download:\n"),
-#ifdef ENABLE_METALINK
-    N_("\
-       --retries                 specify the number of retries for a file.\n\
-                                 (needs to be used with --metalink-file)\n"),
-#endif
     N_("\
   -t,  --tries=NUMBER              set number of retries to NUMBER (0 unlimits).\n"),
     N_("\
@@ -1392,12 +1376,7 @@ for details.\n\n"));
       opt.always_rest = false;
     }
 
-  if (!nurl && !opt.input_filename
-       && !opt.multi_file
-#ifdef ENABLE_METALINK
-       && !opt.metalink_file
-#endif
-     )
+  if (!nurl && !opt.input_filename && !opt.multi_file)
     {
       /* No URL specified.  */
       fprintf (stderr, _("%s: missing URL\n"), exec_name);
@@ -1620,53 +1599,6 @@ outputting to a regular file.\n"));
         }
     }
 
-#ifdef ENABLE_METALINK
-  if(opt.metalink_file)
-    {
-      /* --protocol-directories is the longest option among the ones checked below. */
-      char *temp_option = malloc(sizeof "--protocol-directories");
-
-      if(opt.user || opt.passwd || opt.http_user || opt.http_passwd ||
-         opt.ftp_user || opt.ftp_passwd || opt.ask_passwd)
-        {
-          fprintf (stderr, _("Username and password information not needed to \
-be specified when downloading from a metalink.\n"));
-          exit (WGET_EXIT_GENERIC_ERROR);
-        }
-      temp_option[0] = '\0';
-      if(opt.input_filename)
-        sprintf(temp_option, "-i");
-      else if(opt.output_document)
-        sprintf(temp_option, "-O");
-      else if(opt.base_href)
-        sprintf(temp_option, "--base");
-      else if(opt.force_html)
-        sprintf(temp_option, "--force-html");
-      else if(opt.always_rest)
-        sprintf(temp_option, "-c");
-      else if(opt.spider)
-        sprintf(temp_option, "-spider");
-      else if(opt.cut_dirs)
-        sprintf(temp_option, "--cut-dirs");
-      else if(opt.wait)
-        sprintf(temp_option, "-w");
-      else if(opt.waitretry != 10)
-        sprintf(temp_option, "--waitretry");
-      else if(opt.timestamping)
-        sprintf(temp_option, "--timestamping");
-      else if(opt.protocol_directories)
-          sprintf(temp_option, "--protocol-directories");
-      else if(opt.dirstruct)
-          sprintf(temp_option, "--force-directories");
-      if(temp_option[0])
-        {
-          fprintf (stderr, _("%s can't be used with --metalink.\n"), temp_option);
-          free(temp_option);
-          exit (WGET_EXIT_GENERIC_ERROR);
-        }
-    }
-#endif
-
 #ifdef __VMS
   /* Set global ODS5 flag according to the specified destination (if
      any), otherwise according to the current default device.
@@ -1770,21 +1702,6 @@ be specified when downloading from a metalink.\n"));
                    opt.input_filename);
     }
 
-#ifdef ENABLE_METALINK
-  /* And then from the metalink file, if any.  */
-  if (opt.metalink_file)
-    {
-      int count;
-      int status;
-
-      status = retrieve_from_file (opt.metalink_file, opt.force_html, &count);
-      inform_exit_status (status);
-      if (!count)
-        logprintf (LOG_NOTQUIET, _("No URLs found in %s.\n"),
-                   opt.input_filename);
-    }
-#endif
-
   /* And then from the multi file, if any.  */
   if (opt.multi_file)
     {
@@ -1806,9 +1723,6 @@ be specified when downloading from a metalink.\n"));
   if ((opt.recursive || opt.page_requisites
        || nurl > 1
        || (opt.input_filename && total_downloaded_bytes != 0)
-#ifdef ENABLE_METALINK
-       || (opt.metalink_file && total_downloaded_bytes != 0)
-#endif
        )
       &&
       total_downloaded_bytes != 0)
