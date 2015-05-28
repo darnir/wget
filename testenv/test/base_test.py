@@ -11,6 +11,7 @@ import conf
 
 HTTP = "HTTP"
 HTTPS = "HTTPS"
+FTP = "FTP"
 
 
 class BaseTest:
