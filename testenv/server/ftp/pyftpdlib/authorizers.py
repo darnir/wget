@@ -105,7 +105,7 @@ class DummyAuthorizer(object):
 
         Optional perm argument is a string referencing the user's
         permissions explained below:
-
+	(dictionary) homedir : Virtual filesystem.
         Read permissions:
          - "e" = change directory (CWD command)
          - "l" = list files (LIST, NLST, STAT, MLSD, MLST, SIZE, MDTM commands)
@@ -124,11 +124,7 @@ class DummyAuthorizer(object):
         """
         if self.has_user(username):
             raise ValueError('user %r already exists' % username)
-        if not isinstance(homedir, unicode):
-            homedir = homedir.decode('utf8')
-        if not os.path.isdir(homedir):
-            raise ValueError('no such directory: %r' % homedir)
-        homedir = os.path.realpath(homedir)
+
         self._check_permissions(username, perm)
         dic = {'pwd': str(password),
                'home': homedir,
@@ -160,10 +156,10 @@ class DummyAuthorizer(object):
     def remove_user(self, username):
         """Remove a user from the virtual users table."""
         del self.user_table[username]
-
+"""
     def override_perm(self, username, directory, perm, recursive=False):
-        """Override permissions for a given directory."""
-        self._check_permissions(username, perm)
+"""        """Override permissions for a given directory."""
+"""        self._check_permissions(username, perm)
         if not os.path.isdir(directory):
             raise ValueError('no such directory: %r' % directory)
         directory = os.path.normcase(os.path.realpath(directory))
@@ -173,7 +169,7 @@ class DummyAuthorizer(object):
         if not self._issubpath(directory, home):
             raise ValueError("path escapes user home directory")
         self.user_table[username]['operms'][directory] = perm, recursive
-
+"""
     def validate_authentication(self, username, password, handler):
         """Raises AuthenticationFailed if supplied username and
         password don't match the stored credentials, else return
@@ -224,19 +220,9 @@ class DummyAuthorizer(object):
 
         Expected perm argument is one of the following letters:
         "elradfmwM".
+        Since we are not overriding permissions this function will simply 
+        return permissions associated with given username.
         """
-        if path is None:
-            return perm in self.user_table[username]['perm']
-
-        path = os.path.normcase(path)
-        for dir in self.user_table[username]['operms'].keys():
-            operm, recursive = self.user_table[username]['operms'][dir]
-            if self._issubpath(path, dir):
-                if recursive:
-                    return perm in operm
-                if (path == dir or os.path.dirname(path) == dir
-                        and not os.path.isdir(path)):
-                    return perm in operm
 
         return perm in self.user_table[username]['perm']
 
@@ -263,12 +249,6 @@ class DummyAuthorizer(object):
                 warnings.warn("write permissions assigned to anonymous user.",
                               RuntimeWarning)
                 warned = 1
-
-    def _issubpath(self, a, b):
-        """Return True if a is a sub-path of b or if the paths are equal."""
-        p1 = a.rstrip(os.sep).split(os.sep)
-        p2 = b.rstrip(os.sep).split(os.sep)
-        return p1[:len(p2)] == p2
 
 
 def replace_anonymous(callable):
