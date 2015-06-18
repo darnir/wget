@@ -6,11 +6,13 @@ import socket
 class StoppableFTPServer(FTPServer):
     def server_conf(self, filelist, conf_dict):
         self.server_configs = conf_dict
-	self.fileSys = filelist
+        self.fileSys = filelist
 
 class _FTPHandler(FTPHandler):
     def pre_process_command(self, line, cmd, arg):
-
+        """
+        Overriding method to remove filesystem dependencies
+        """
         if cmd == "SITE" and arg:
             cmd = "SITE %s" % arg.split(' ')[0].upper()
             arg = line[len(cmd) + 1:]
@@ -49,15 +51,21 @@ class _FTPHandler(FTPHandler):
             else:
                 self.process_command(cmd, arg)
                 return
-        else:
+        
             """
             Filesystem and commands related contents goes here.
             """
+        
+        else:
+            if self.proto_cmds[cmd]['perm'] :
+                if cmd == 'CWD':
+                    arg = "/"
+                elif cmd == 'LIST':
+                    arg = "/"
+                else:
+                    arg = "/"
 
-
-
-             
-
+        self.process_command(self, cmd, **kwargs)
 
 
 class FTPd(threading.Thread):
