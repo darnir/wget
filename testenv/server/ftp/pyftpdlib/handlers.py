@@ -2531,14 +2531,16 @@ class FTPHandler(AsyncChat):
         # The 257 response is supposed to include the directory
         # name and in case it contains embedded double-quotes
         # they must be doubled (see RFC-959, chapter 7, appendix 2).
-        cwd = self.fs.cwd
-        assert isinstance(cwd, unicode), cwd
+        cwd = "/"
         self.respond('257 "%s" is the current directory.'
                      % cwd.replace('"', '""'))
 
     def ftp_CWD(self, path):
         """Change the current working directory.
         On success return the new directory path, else None.
+        In our case we are using virtual filesystem, here we have
+        only one directory to work with i.e. "/".Hence no change the
+        current working directory operation is needed.
         """
         # Temporarily join the specified directory to see if we have
         # permissions to do so, then get back to original process's
@@ -2547,19 +2549,14 @@ class FTPHandler(AsyncChat):
         # the process is started we'll get into troubles (os.getcwd()
         # will fail with ENOENT) but we can't do anything about that
         # except logging an error.
-        init_cwd = getcwdu()
         try:
-            self.run_as_current_user(self.fs.chdir, path)
-        except (OSError, FilesystemError):
-            err = sys.exc_info()[1]
-            why = _strerror(err)
+            cwd = "/"
+        except Exception:
+            why = "Unable to change directory"
             self.respond('550 %s.' % why)
+
         else:
-            cwd = self.fs.cwd
-            assert isinstance(cwd, unicode), cwd
             self.respond('250 "%s" is the current directory.' % cwd)
-            if getcwdu() != init_cwd:
-                os.chdir(init_cwd)
             return path
 
     def ftp_CDUP(self, path):
