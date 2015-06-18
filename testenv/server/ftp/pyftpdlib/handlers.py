@@ -1540,10 +1540,11 @@ class FTPHandler(AsyncChat):
             # remove client IP address from ip map
             if self.remote_ip in self.server.ip_map:
                 self.server.ip_map.remove(self.remote_ip)
-
+            """
             if self.fs is not None:
                 self.fs.cmd_channel = None
                 self.fs = None
+            """
             self.log("FTP session closed (disconnect).")
             # Having self.remote_ip not set means that no connection
             # actually took place, hence we're not interested in
@@ -1756,6 +1757,26 @@ class FTPHandler(AsyncChat):
             return function(*args, **kwargs)
         finally:
             self.authorizer.terminate_impersonation(self.username)
+
+
+    def get_file_list(self, file_sys):
+        """Generator function which returns iterator object.
+        This function also does formatting of file list.
+        """
+        
+        for filename in file_sys:
+            perm = "_rw_rw_rw_"
+            nlinks = ' '
+            uname = "owner"
+            gname = "group"
+            size = len(file_sys[filename])
+            date = "Aug 08"
+            ftime = "8:10"
+            line = "%s %3s %3s %3s %3s %3s %3s" %(
+                    perm, nlinks, uname, gname, size, date, ftime, filename)
+            yield line
+
+
 
     # --- logging wrappers
 
@@ -2079,10 +2100,9 @@ class FTPHandler(AsyncChat):
         # - Some older FTP clients erroneously issue /bin/ls-like LIST
         #   formats in which case we fall back on cwd as default.
         try:
-            iterator = self.run_as_current_user(self.fs.get_list_dir, path)
-        except (OSError, FilesystemError):
-            err = sys.exc_info()[1]
-            why = _strerror(err)
+            iterator = self.get_file_list(self.fileSys)
+        except Exception:
+            why = "Unable to fetch files"
             self.respond('550 %s.' % why)
         else:
             producer = BufferedIteratorProducer(iterator)
