@@ -1763,7 +1763,7 @@ class FTPHandler(AsyncChat):
         """Generator function which returns iterator object.
         This function also does formatting of file list.
         """
-        
+
         for filename in file_sys:
             perm = "_rw_rw_rw_"
             nlinks = ' '
@@ -2521,11 +2521,11 @@ class FTPHandler(AsyncChat):
             self.password = line
             self.attempted_logins = 0
 
-            self.fs = self.abstracted_fs(home, self)
+            #self.fs = self.abstracted_fs(home, self)
             self.on_login(self.username)
-
+    """
     def ftp_REIN(self, line):
-        """Reinitialize user's current session."""
+        #Reinitialize user's current session.
         # From RFC-959:
         # REIN command terminates a USER, flushing all I/O and account
         # information, except to allow any transfer in progress to be
@@ -2537,6 +2537,7 @@ class FTPHandler(AsyncChat):
         # Note: RFC-959 erroneously mention "220" as the correct response
         # code to be given in this case, but this is wrong...
         self.respond("230 Ready for new user.")
+    """
 
         # --- filesystem operations
     def ftp_PWD(self, line):
@@ -2614,11 +2615,13 @@ class FTPHandler(AsyncChat):
         else:
             self.respond("213 %s" % size)
 
+
+    """
     def ftp_MDTM(self, path):
-        """Return last modification time of file to the client as an ISO
+        #Return last modification time of file to the client as an ISO
         3307 style timestamp (YYYYMMDDHHMMSS) as defined in RFC-3659.
         On success return the file path, else None.
-        """
+
         line = self.fs.fs2ftp(path)
         if not self.fs.isfile(self.fs.realpath(path)):
             self.respond("550 %s is not retrievable" % line)
@@ -2642,11 +2645,12 @@ class FTPHandler(AsyncChat):
         else:
             self.respond("213 %s" % lmt)
             return path
-
+    """
+    """
     def ftp_MKD(self, path):
-        """Create the specified directory.
-        On success return the directory path, else None.
-        """
+        #Create the specified directory.
+        #On success return the directory path, else None.
+
         line = self.fs.fs2ftp(path)
         try:
             self.run_as_current_user(self.fs.mkdir, path)
@@ -2661,11 +2665,12 @@ class FTPHandler(AsyncChat):
             self.respond(
                 '257 "%s" directory created.' % line.replace('"', '""'))
             return path
-
+    """
+    """
     def ftp_RMD(self, path):
-        """Remove the specified directory.
-        On success return the directory path, else None.
-        """
+        #Remove the specified directory.
+        #On success return the directory path, else None.
+
         if self.fs.realpath(path) == self.fs.realpath(self.fs.root):
             msg = "Can't remove root directory."
             self.respond("550 %s" % msg)
@@ -2678,11 +2683,13 @@ class FTPHandler(AsyncChat):
             self.respond('550 %s.' % why)
         else:
             self.respond("250 Directory removed.")
+    """
+    """
 
     def ftp_DELE(self, path):
-        """Delete the specified file.
-        On success return the file path, else None.
-        """
+        #Delete the specified file.
+        #On success return the file path, else None.
+
         try:
             self.run_as_current_user(self.fs.remove, path)
         except (OSError, FilesystemError):
@@ -2692,10 +2699,11 @@ class FTPHandler(AsyncChat):
         else:
             self.respond("250 File removed.")
             return path
-
+    """
+    """
     def ftp_RNFR(self, path):
-        """Rename the specified (only the source name is specified
-        here, see RNTO command)"""
+        #Rename the specified (only the source name is specified
+        #here, see RNTO command)
         if not self.fs.lexists(path):
             self.respond("550 No such file or directory.")
         elif self.fs.realpath(path) == self.fs.realpath(self.fs.root):
@@ -2703,12 +2711,13 @@ class FTPHandler(AsyncChat):
         else:
             self._rnfr = path
             self.respond("350 Ready for destination name.")
-
+    """
+    """
     def ftp_RNTO(self, path):
-        """Rename file (destination name only, source is specified with
+        #Rename file (destination name only, source is specified with
         RNFR).
         On success return a (source_path, destination_path) tuple.
-        """
+
         if not self._rnfr:
             self.respond("503 Bad sequence of commands: use RNFR first.")
             return
@@ -2723,7 +2732,7 @@ class FTPHandler(AsyncChat):
         else:
             self.respond("250 Renaming ok.")
             return (src, path)
-
+    """
         # --- others
     def ftp_TYPE(self, line):
         """Set current type data type to binary/ascii"""
@@ -2736,9 +2745,9 @@ class FTPHandler(AsyncChat):
             self._current_type = 'i'
         else:
             self.respond('504 Unsupported type "%s".' % line)
-
+    """
     def ftp_STRU(self, line):
-        """Set file structure ("F" is the only one supported (noop))."""
+        #Set file structure ("F" is the only one supported (noop)).
         stru = line.upper()
         if stru == 'F':
             self.respond('200 File transfer structure set to: F.')
@@ -2756,6 +2765,7 @@ class FTPHandler(AsyncChat):
             self.respond('504 Unimplemented STRU type.')
         else:
             self.respond('501 Unrecognized STRU type.')
+    """
 
     def ftp_MODE(self, line):
         """Set data transfer mode ("S" is the only one supported (noop))."""
@@ -2766,9 +2776,9 @@ class FTPHandler(AsyncChat):
             self.respond('504 Unimplemented MODE type.')
         else:
             self.respond('501 Unrecognized MODE type.')
-
+    """
     def ftp_STAT(self, path):
-        """Return statistics about current ftp session. If an argument
+        #Return statistics about current ftp session. If an argument
         is provided return directory listing over command channel.
 
         Implementation note:
@@ -2782,7 +2792,7 @@ class FTPHandler(AsyncChat):
         each contained filename, and build a list of matching files in
         memory.  Since this operation can be quite intensive, both CPU-
         and memory-wise, we do not support globbing.
-        """
+
         # return STATus information about ftpd
         if not path:
             s = []
@@ -2829,6 +2839,7 @@ class FTPHandler(AsyncChat):
                 self.push_with_producer(BufferedIteratorProducer(iterator))
                 self.respond('213 End of status.')
                 return path
+    """
     """
     def ftp_FEAT(self, line):
         #List all new features supported as defined in RFC-2398.
@@ -2929,7 +2940,6 @@ class FTPHandler(AsyncChat):
     # The user willing to add support for a specific SITE command must
     # update self.proto_cmds dictionary and define a new ftp_SITE_%CMD%
     # method in the subclass.
-    """
     """
     def ftp_SITE_CHMOD(self, path, mode):
 
