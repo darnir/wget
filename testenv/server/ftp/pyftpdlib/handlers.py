@@ -2572,18 +2572,19 @@ class FTPHandler(AsyncChat):
         else:
             self.respond('250 "%s" is the current directory.' % cwd)
             return path
-
+    """
     def ftp_CDUP(self, path):
-        """Change into the parent directory.
-        On success return the new directory, else None.
-        """
+        #Change into the parent directory.
+        #On success return the new directory, else None.
+
         # Note: RFC-959 says that code 200 is required but it also says
         # that CDUP uses the same codes as CWD.
         return self.ftp_CWD(path)
-
+    """
+    """
     def ftp_SIZE(self, path):
-        """Return size of file in a format suitable for using with
-        RESTart as defined in RFC-3659."""
+        #Return size of file in a format suitable for using with
+        RESTart as defined in RFC-3659.
 
         # Implementation note: properly handling the SIZE command when
         # TYPE ASCII is used would require to scan the entire file to
@@ -2614,6 +2615,7 @@ class FTPHandler(AsyncChat):
             self.respond('550 %s.' % why)
         else:
             self.respond("213 %s" % size)
+    """
 
 
     """
@@ -2766,9 +2768,9 @@ class FTPHandler(AsyncChat):
         else:
             self.respond('501 Unrecognized STRU type.')
     """
-
+    """
     def ftp_MODE(self, line):
-        """Set data transfer mode ("S" is the only one supported (noop))."""
+        #Set data transfer mode ("S" is the only one supported (noop)).
         mode = line.upper()
         if mode == 'S':
             self.respond('200 Transfer mode set to: S')
@@ -2776,6 +2778,7 @@ class FTPHandler(AsyncChat):
             self.respond('504 Unimplemented MODE type.')
         else:
             self.respond('501 Unrecognized MODE type.')
+    """
     """
     def ftp_STAT(self, path):
         #Return statistics about current ftp session. If an argument
