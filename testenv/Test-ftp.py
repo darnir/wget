@@ -17,7 +17,7 @@ A_File = WgetFile ("File1", File1)
 WGET_OPTIONS = " -S "
 WGET_URLS = [["File1"]]
 
-Files = [[A_File, B_File]]
+Files = [[A_File]]
 
 Servers = [FTP]
 
@@ -41,7 +41,7 @@ err = FTPTest (
                 name=TEST_NAME,
                 pre_hook=pre_test,
                 test_params=test_options,
-                post_hooks=post_test,
+                post_hook=post_test,
                 protocols=Servers
 ).begin ()
 
