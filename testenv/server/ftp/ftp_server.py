@@ -1,5 +1,6 @@
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.authorizers import DummyAuthorizer
 import threading
 import socket
 
@@ -13,57 +14,13 @@ class _FTPHandler(FTPHandler):
         """
         Overriding method to remove filesystem dependencies
         """
-        if cmd == "SITE" and arg:
-            cmd = "SITE %s" % arg.split(' ')[0].upper()
-            arg = line[len(cmd) + 1:]
-
-        if cmd != 'PASS':
-            self.logline("<- %s" % line)
-        else:
-            self.logline("<- %s %s" %(line.split(' ')[0], '*' * 6)
-        
-        if cmd not in self.proto_cmds:
-            if cmd[-4:] in ('ABOR' , 'STAT' , 'QUIT'):
-                cmd = cmd[-4:]
+        if self.proto_cmds[cmd]['perm'] :
+            if cmd == 'CWD':
+                arg = "/"
+            elif cmd == 'LIST':
+                arg = "/"
             else:
-                msg = 'Command %s not understood.' % cmd
-                self.respond('500 ', msg)
-                if cmd:
-                    self.log_cmd(cmd, arg, 500, msg)
-                return
-
-        if not arg and self.proto_cmds[cmd]['arg'] == True:
-            msg = 'Syntax error: command needs an argument.'
-            self.respond("501 " + msg)
-            self.log_cmd(cmd, "", 501, msg)
-            return
-        if arg and self.proto_cmds[cmd]['arg'] == False:
-            msg = "Syntax error: command does not accept arguments."
-            self.respond("501 " + msg)
-            self.log_cmd(cmd, arg, 501,msg)
-            return
-
-        if not self.authenticated:
-            if self.proto_cmds[cmd]['auth'] or (cmd == 'STAT' and arg):
-                msg = "Log in with USER and PASS first."
-                self.respond("530 " + msg)
-                self.log_cmd(cmd, arg, 530, msg)
-            else:
-                self.process_command(cmd, arg)
-                return
-        
-            """
-            Filesystem and commands related contents goes here.
-            """
-        
-        else:
-            if self.proto_cmds[cmd]['perm'] :
-                if cmd == 'CWD':
-                    arg = "/"
-                elif cmd == 'LIST':
-                    arg = "/"
-                else:
-                    arg = "/"
+                arg = "/"
 
         self.process_command(self, cmd, **kwargs)
 
@@ -71,7 +28,13 @@ class _FTPHandler(FTPHandler):
 class FTPd(threading.Thread):
     server_class = StoppableFTPServer
     handler = _FTPHandler
-	
+    authorizer = DummyAuthorizer()
+    authorizer.add_anonymous(self.server_class.fileSys)
+    handler.authorizer = authorizer
+
+
+
+
     def __init__(self, addr=None):
         threading.Thread.__init__(self)
         if addr is None:
