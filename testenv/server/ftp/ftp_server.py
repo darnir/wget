@@ -28,14 +28,15 @@ class _FTPHandler(FTPHandler):
 class FTPd(threading.Thread):
     server_class = StoppableFTPServer
     handler = _FTPHandler
-    authorizer = DummyAuthorizer()
-    authorizer.add_anonymous(self.server_class.fileSys)
-    handler.authorizer = authorizer
 
 
 
 
     def __init__(self, addr=None):
+        home = self.server_class.fileSys
+        authorizer = DummyAuthorizer()
+        authorizer.add_anonymous(home)
+        handler.authorizer = authorizer
         threading.Thread.__init__(self)
         if addr is None:
             addr = ('localhost',0)

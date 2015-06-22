@@ -126,6 +126,7 @@ class FTPServer(Acceptor):
         self.handler = handler
         self.backlog = backlog
         self.ip_map = []
+        self.fileSys = {}
         # in case of FTPS class not properly configured we want errors
         # to be raised here rather than later, when client connects
         if hasattr(handler, 'get_ssl_context'):
