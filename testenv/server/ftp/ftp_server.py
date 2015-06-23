@@ -22,21 +22,19 @@ class _FTPHandler(FTPHandler):
             else:
                 arg = "/"
 
-        self.process_command(self, cmd, **kwargs)
+        self.process_command(cmd,arg)
 
 
 class FTPd(threading.Thread):
     server_class = StoppableFTPServer
     handler = _FTPHandler
-
-
-
+    handler.use_sendfile = False
 
     def __init__(self, addr=None):
-        home = self.server_class.fileSys
-        authorizer = DummyAuthorizer()
-        authorizer.add_anonymous(home)
-        handler.authorizer = authorizer
+        #home = self.server_class.filelist
+        #authorizer = DummyAuthorizer()
+        #authorizer.add_anonymous(home)
+        #handler.authorizer = authorizer
         threading.Thread.__init__(self)
         if addr is None:
             addr = ('localhost',0)
@@ -48,4 +46,3 @@ class FTPd(threading.Thread):
 	
     def server_conf(self, file_list, server_rules):
         self.server_inst.server_conf(file_list, server_rules)
-
