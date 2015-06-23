@@ -156,10 +156,10 @@ class DummyAuthorizer(object):
     def remove_user(self, username):
         """Remove a user from the virtual users table."""
         del self.user_table[username]
-"""
+    """
     def override_perm(self, username, directory, perm, recursive=False):
-"""        """Override permissions for a given directory."""
-"""        self._check_permissions(username, perm)
+        #Override permissions for a given directory.
+        #self._check_permissions(username, perm)
         if not os.path.isdir(directory):
             raise ValueError('no such directory: %r' % directory)
         directory = os.path.normcase(os.path.realpath(directory))
@@ -169,7 +169,7 @@ class DummyAuthorizer(object):
         if not self._issubpath(directory, home):
             raise ValueError("path escapes user home directory")
         self.user_table[username]['operms'][directory] = perm, recursive
-"""
+    """
     def validate_authentication(self, username, password, handler):
         """Raises AuthenticationFailed if supplied username and
         password don't match the stored credentials, else return
