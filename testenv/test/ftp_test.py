@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from misc.colour_terminal import print_green
-from server.ftp.ftp_server.py import FTPd
+from server.ftp.ftp_server import FTPd
 from test.base_test import BaseTest, FTP
 
 class FTPTest(BaseTest):
