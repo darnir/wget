@@ -1,6 +1,7 @@
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.authorizers import DummyAuthorizer
+from exc.server_error import ServerError, AuthError
 import threading
 import socket
 
@@ -24,6 +25,33 @@ class _FTPHandler(FTPHandler):
 
         self.process_command(cmd,arg)
 
+    def ftp_USER(self, line):
+        """ Overriding ftp_USER method.
+        Set the username for the current session.
+        """
+        if not self.authenticated:
+            self.respond('331 Username OK, Waiting for password')
+
+        self.username = line
+    def ftp_PASS(self, line):
+        """
+        Method to handle PASS command. This method is independent of authorizers.
+        """
+        if self.authenticated:
+            self.respond("503 User is already authenticated")
+            return
+        if not self.username:
+            self.respond("503 Login with USER first")
+            return
+        try:
+            msg_login = "Login successful"
+            self.respond('230 %s' %msg_login)
+            self.log("USER '%s' logged in." % self.username)
+            self.authenticated = True
+            self.password = line
+        except AuthError as se:
+            self.respond('Login failed')
+            raise se
 
 class FTPd(threading.Thread):
     server_class = StoppableFTPServer
