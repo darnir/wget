@@ -215,8 +215,9 @@ class FTPServer(Acceptor):
                 self.close_all()
         else:
             self.ioloop.loop(timeout, blocking)
+
     def shutdown(self):
-        self.close_all()
+        return self.close_all()
 
     def handle_accepted(self, sock, addr):
         """Called when remote client initiates a connection."""
