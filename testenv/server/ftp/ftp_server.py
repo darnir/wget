@@ -129,18 +129,15 @@ class FTPd(threading.Thread):
     handler.use_sendfile = False
 
     def __init__(self, addr=None):
-        #home = self.server_class.filelist
-        #authorizer = DummyAuthorizer()
-        #authorizer.add_anonymous(home)
-        #handler.authorizer = authorizer
+
         threading.Thread.__init__(self)
         if addr is None:
-            addr = ('localhost',0)
-            self.server_inst = self.server_class(addr,self.handler)
-            self.server_address = self.server_inst.socket.getsockname()[:2]
-		
+            addr = ('::1', 0)
+        self.server_inst = self.server_class(addr,self.handler)
+        self.server_address = self.server_inst.socket.getsockname()[:2]
+
     def run(self):
         self.server_inst.serve_forever()
-	
+
     def server_conf(self, file_list, server_rules):
         self.server_inst.server_conf(file_list, server_rules)
