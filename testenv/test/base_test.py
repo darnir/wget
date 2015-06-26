@@ -120,6 +120,13 @@ class BaseTest:
             # 1 a
             # 5 e
             # 3 c
+            """Convert IPV6 Address URL according to RFC 2732"""
+            if domain[:3] == '::1' :
+                host = '::1'
+                len_port = len(domain) - 3
+                port_number = domain[-len_port:]
+                domain = '[' + host + ']' + port_number
+
             for url in urls:
                 cmd_line += '%s://%s/%s ' % (protocol.lower(), domain, url)
 
