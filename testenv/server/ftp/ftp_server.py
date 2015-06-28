@@ -132,7 +132,7 @@ class FTPd(threading.Thread):
 
         threading.Thread.__init__(self)
         if addr is None:
-            addr = ('::1', 0)
+            addr = ('localhost', 0)
         self.server_inst = self.server_class(addr,self.handler)
         self.server_address = self.server_inst.socket.getsockname()[:2]
 
