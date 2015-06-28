@@ -1,22 +1,23 @@
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.handlers import FTPHandler
-from pyftpdlib.authorizers import DummyAuthorizer
-from exc.server_error import ServerError, AuthError
+from exc.server_error import AuthError
 import threading
-import socket
 import sys
+import os
+
 
 class StoppableFTPServer(FTPServer):
     def server_conf(self, filelist, conf_dict):
         self.server_configs = conf_dict
         self.fileSys = filelist
 
+
 class _FTPHandler(FTPHandler):
     def pre_process_command(self, line, cmd, arg):
         """
         Overriding method to remove filesystem dependencies
         """
-        if self.proto_cmds[cmd]['perm'] :
+        if self.proto_cmds[cmd]['perm']:
             if cmd == 'CWD':
                 arg = "/"
             elif cmd == 'LIST':
@@ -26,7 +27,7 @@ class _FTPHandler(FTPHandler):
                 arg = "/"
             """
 
-        self.process_command(cmd,arg)
+        self.process_command(cmd, arg)
 
     def ftp_USER(self, line):
         """ Overriding ftp_USER method.
@@ -36,9 +37,11 @@ class _FTPHandler(FTPHandler):
             self.respond('331 Username OK, Waiting for password')
 
         self.username = line
+
     def ftp_PASS(self, line):
         """
-        Method to handle PASS command. This method is independent of authorizers.
+        Method to handle PASS command. This method is independent of
+        authorizers.
         """
         if self.authenticated:
             self.respond("503 User is already authenticated")
@@ -48,7 +51,7 @@ class _FTPHandler(FTPHandler):
             return
         try:
             msg_login = "Login successful"
-            self.respond('230 %s' %msg_login)
+            self.respond('230 %s' % msg_login)
             self.log("USER '%s' logged in." % self.username)
             self.authenticated = True
             self.password = line
@@ -67,30 +70,31 @@ class _FTPHandler(FTPHandler):
         size = len(req_file)
         self.respond('213 %s' % size)
 
-
     def ftp_RETR(self, file):
         """Method to retrive the file."""
         rest_pos = self._restart_position
         self._restart_position = 0
 
-        """We have requested file name. So retriving the contents of file name"""
+        """ We have requested file name. So retriving the contents of file
+        name"""
 
         file_contents = self.server.fileSys[file]
 
-
         """Writing all the contents to the file."""
 
-        f = open("File1" , 'w')
+        f = open("File1", 'w')
         f.write(file_contents)
 
-        fd = open("File1" , 'r')
+        fd = open("File1", 'r')
 
         producer = FileProducer(fd, self._current_type)
         self.push_dtp_data(producer, isproducer=True, file=fd, cmd="RETR")
         return file
 
+
 class _FileReadWriteError(OSError):
     """Exception raised when reading or writing a file during a transfer."""
+
 
 class FileProducer(object):
     """Producer wrapper for file[-like] objects."""
@@ -133,7 +137,7 @@ class FTPd(threading.Thread):
         threading.Thread.__init__(self)
         if addr is None:
             addr = ('localhost', 0)
-        self.server_inst = self.server_class(addr,self.handler)
+        self.server_inst = self.server_class(addr, self.handler)
         self.server_address = self.server_inst.socket.getsockname()[:2]
 
     def run(self):
