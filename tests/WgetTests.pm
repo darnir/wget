@@ -14,6 +14,12 @@ use POSIX qw(locale_h);
 use locale;
 
 our $WGETPATH = '../src/wget';
+our $VALGRIND_SUPP_FILE = Cwd::getcwd();
+if (defined $ENV{'srcdir'}) {
+    $VALGRIND_SUPP_FILE = $VALGRIND_SUPP_FILE
+                          . "/" . $ENV{'srcdir'};
+}
+$VALGRIND_SUPP_FILE = $VALGRIND_SUPP_FILE . '/valgrind-suppressions';
 
 my @unexpected_downloads = ();
 
@@ -114,18 +120,29 @@ sub run
       ($cmdline =~ m{^/.*}msx) ? $cmdline : "$self->{_workdir}/$cmdline";
 
     my $valgrind = $ENV{VALGRIND_TESTS};
-    if (!defined $valgrind || $valgrind eq q{} || $valgrind == 0)
+    if (!defined $valgrind)
     {
-
-        # Valgrind not requested - leave $cmdline as it is
+        $valgrind = 0;
     }
-    elsif ($valgrind == 1)
+
+    my $gdb = $ENV{GDB_TESTS};
+    if (!defined $gdb)
+    {
+        $gdb = 0;
+    }
+
+    if ($gdb == 1)
+    {
+        $cmdline = 'gdb --args ' . $cmdline;
+    }
+    elsif ($valgrind eq "1")
     {
         $cmdline =
-          'valgrind --error-exitcode=301 --leak-check=yes --track-origins=yes '
+          'valgrind --suppressions=' . $VALGRIND_SUPP_FILE
+          . ' --error-exitcode=301 --leak-check=yes --track-origins=yes '
           . $cmdline;
     }
-    else
+    elsif ($valgrind ne q{} && $valgrind ne "0")
     {
         $cmdline = "$valgrind $cmdline";
     }
@@ -248,13 +265,12 @@ sub _show_diff
     my $min  = $explen <= $actlen ? $explen : $actlen;
     my $line = 1;
     my $col  = 1;
-    my $i;
+    my $i    = 0;
 
-    # for ($i=0; $i != $min; ++$i) {
-    for my $i (0 .. $min - 1)
+    while ( $i < $min )
     {
         last if substr($expected, $i, 1) ne substr $actual, $i, 1;
-        if (substr($expected, $i, 1) eq q{\n})
+        if (substr($expected, $i, 1) eq "\n")
         {
             $line++;
             $col = 0;
@@ -263,6 +279,7 @@ sub _show_diff
         {
             $col++;
         }
+        $i++;
     }
     my $snip_start = $i - ($SNIPPET_SIZE / 2);
     if ($snip_start < 0)

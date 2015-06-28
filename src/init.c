@@ -205,6 +205,7 @@ static const struct {
 #endif
   { "httpsproxy",       &opt.https_proxy,       cmd_string },
   { "httpuser",         &opt.http_user,         cmd_string },
+  { "if-modified-since", &opt.if_modified_since, cmd_boolean },
   { "ignorecase",       &opt.ignore_case,       cmd_boolean },
   { "ignorelength",     &opt.ignore_length,     cmd_boolean },
   { "ignoretags",       &opt.ignore_tags,       cmd_vector },
@@ -361,6 +362,7 @@ defaults (void)
     opt.no_proxy = sepstring (tmp);
   opt.prefer_family = prefer_none;
   opt.allow_cache = true;
+  opt.if_modified_since = true;
 
   opt.read_timeout = 900;
   opt.use_robots = true;
@@ -397,6 +399,8 @@ defaults (void)
   /* The default for file name restriction defaults to the OS type. */
 #if defined(WINDOWS) || defined(MSDOS) || defined(__CYGWIN__)
   opt.restrict_files_os = restrict_windows;
+#elif defined(__VMS)
+  opt.restrict_files_os = restrict_vms;
 #else
   opt.restrict_files_os = restrict_unix;
 #endif
@@ -562,9 +566,7 @@ wgetrc_file_name (void)
      SYSTEM_WGETRC should not be defined under WINDOWS.  */
   if (!file)
     {
-      char *home = home_dir ();
-      xfree (file);
-      home = ws_mypath ();
+      char *home = ws_mypath ();
       if (home)
         {
           file = aprintf ("%s/wget.ini", home);
@@ -1481,6 +1483,8 @@ cmd_spec_restrict_file_names (const char *com, const char *val, void *place_igno
 
       if (VAL_IS ("unix"))
         restrict_os = restrict_unix;
+      else if (VAL_IS ("vms"))
+        restrict_os = restrict_vms;
       else if (VAL_IS ("windows"))
         restrict_os = restrict_windows;
       else if (VAL_IS ("lowercase"))
@@ -1495,7 +1499,7 @@ cmd_spec_restrict_file_names (const char *com, const char *val, void *place_igno
         {
           fprintf (stderr, _("\
 %s: %s: Invalid restriction %s,\n\
-    use [unix|windows],[lowercase|uppercase],[nocontrol],[ascii].\n"),
+    use [unix|vms|windows],[lowercase|uppercase],[nocontrol],[ascii].\n"),
                    exec_name, com, quote (val));
           return false;
         }

@@ -376,17 +376,25 @@ request_send (const struct request *req, int fd, FILE *warc_tmp)
   return write_error;
 }
 
-/* Release the resources used by REQ. */
+/* Release the resources used by REQ.
+   It is safe to call it with a vaild pointer to a NULL pointer.
+   It is not safe to call it with an invalid or NULL pointer.  */
 
 static void
-request_free (struct request *req)
+request_free (struct request **req_ref)
 {
   int i;
+  struct request *req = *req_ref;
+
+  if (!req)
+    return;
+
   xfree (req->arg);
   for (i = 0; i < req->hcount; i++)
     release_header (&req->headers[i]);
   xfree (req->headers);
   xfree (req);
+  *req_ref = NULL;
 }
 
 static struct hash_table *basic_authed_hosts;
@@ -808,13 +816,22 @@ resp_status (const struct response *resp, char **message)
   return status;
 }
 
-/* Release the resources used by RESP.  */
+/* Release the resources used by RESP.
+   It is safe to call it with a valid pointer to a NULL pointer.
+   It is not safe to call it with a invalid or NULL pointer.  */
 
 static void
-resp_free (struct response *resp)
+resp_free (struct response **resp_ref)
 {
+  struct response *resp = *resp_ref;
+
+  if (!resp)
+    return;
+
   xfree (resp->headers);
   xfree (resp);
+
+  *resp_ref = NULL;
 }
 
 /* Print a single line of response, the characters [b, e).  We tried
@@ -1184,14 +1201,17 @@ parse_content_disposition (const char *hdr, char **filename)
   param_token name, value;
   bool is_url_encoded = false;
 
-  *filename = NULL;
+  char *encodedFilename = NULL;
+  char *unencodedFilename = NULL;
   for ( ; extract_param (&hdr, &name, &value, ';', &is_url_encoded);
         is_url_encoded = false)
     {
-      int isFilename = BOUNDED_EQUAL_NO_CASE ( name.b, name.e, "filename" );
+      int isFilename = BOUNDED_EQUAL_NO_CASE (name.b, name.e, "filename");
       if ( isFilename && value.b != NULL)
         {
           /* Make the file name begin at the last slash or backslash. */
+          bool isEncodedFilename;
+          char **outFilename;
           const char *last_slash = memrchr (value.b, '/', value.e - value.b);
           const char *last_bs = memrchr (value.b, '\\', value.e - value.b);
           if (last_slash && last_bs)
@@ -1201,17 +1221,32 @@ parse_content_disposition (const char *hdr, char **filename)
           if (value.b == value.e)
             continue;
 
-          if (*filename)
-            append_value_to_filename (filename, &value, is_url_encoded);
+          /* Check if the name is "filename*" as specified in RFC 6266.
+           * Since "filename" could be broken up as "filename*N" (RFC 2231),
+           * a check is needed to make sure this is not the case */
+          isEncodedFilename = *name.e == '*' && !c_isdigit (*(name.e + 1));
+          outFilename = isEncodedFilename ? &encodedFilename
+            : &unencodedFilename;
+          if (*outFilename)
+            append_value_to_filename (outFilename, &value, is_url_encoded);
           else
             {
-              *filename = strdupdelim (value.b, value.e);
+              *outFilename = strdupdelim (value.b, value.e);
               if (is_url_encoded)
-                url_unescape (*filename);
+                url_unescape (*outFilename);
             }
         }
     }
-
+  if (encodedFilename)
+    {
+      xfree (unencodedFilename);
+      *filename = encodedFilename;
+    }
+  else
+    {
+      xfree (encodedFilename);
+      *filename = unencodedFilename;
+    }
   if (*filename)
     return true;
   else
@@ -1646,6 +1681,58 @@ read_response_body (struct http_stat *hs, int sock, FILE *fp, wgint contlen,
 } while (0)
 #endif /* def __VMS [else] */
 
+/*
+   Convert time_t to one of valid HTTP date formats
+   ie. rfc1123-date.
+
+   HTTP-date    = rfc1123-date | rfc850-date | asctime-date
+   rfc1123-date = wkday "," SP date1 SP time SP "GMT"
+   rfc850-date  = weekday "," SP date2 SP time SP "GMT"
+   asctime-date = wkday SP date3 SP time SP 4DIGIT
+   date1        = 2DIGIT SP month SP 4DIGIT
+                  ; day month year (e.g., 02 Jun 1982)
+   date2        = 2DIGIT "-" month "-" 2DIGIT
+                  ; day-month-year (e.g., 02-Jun-82)
+   date3        = month SP ( 2DIGIT | ( SP 1DIGIT ))
+                  ; month day (e.g., Jun  2)
+   time         = 2DIGIT ":" 2DIGIT ":" 2DIGIT
+                  ; 00:00:00 - 23:59:59
+   wkday        = "Mon" | "Tue" | "Wed"
+                | "Thu" | "Fri" | "Sat" | "Sun"
+   weekday      = "Monday" | "Tuesday" | "Wednesday"
+                | "Thursday" | "Friday" | "Saturday" | "Sunday"
+   month        = "Jan" | "Feb" | "Mar" | "Apr"
+                | "May" | "Jun" | "Jul" | "Aug"
+                | "Sep" | "Oct" | "Nov" | "Dec"
+
+   source: RFC2616  */
+static uerr_t
+time_to_rfc1123 (time_t time, char *buf, size_t bufsize)
+{
+  static const char *wkday[] = { "Sun", "Mon", "Tue", "Wed",
+                                 "Thu", "Fri", "Sat" };
+  static const char *month[] = { "Jan", "Feb", "Mar", "Apr",
+                                 "May", "Jun", "Jul", "Aug",
+                                 "Sep", "Oct", "Nov", "Dec" };
+  /* rfc1123 example: Thu, 01 Jan 1998 22:12:57 GMT  */
+  static const char *time_format = "%s, %02d %s %04d %02d:%02d:%02d GMT";
+
+  struct tm *gtm = gmtime (&time);
+  if (!gtm)
+    {
+      logprintf (LOG_NOTQUIET,
+                 _("gmtime failed. This is probably a bug.\n"));
+      return TIMECONV_ERR;
+    }
+
+  snprintf (buf, bufsize, time_format, wkday[gtm->tm_wday],
+            gtm->tm_mday, month[gtm->tm_mon],
+            gtm->tm_year + 1900, gtm->tm_hour,
+            gtm->tm_min, gtm->tm_sec);
+
+  return RETROK;
+}
+
 static struct request *
 initialize_request (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
                     bool inhibit_keep_alive, bool *basic_auth_finished,
@@ -1687,6 +1774,20 @@ initialize_request (struct url *u, struct http_stat *hs, int *dt, struct url *pr
 
       /* ... but some HTTP/1.0 caches doesn't implement Cache-Control.  */
       request_set_header (req, "Pragma", "no-cache", rel_none);
+    }
+  if (*dt & IF_MODIFIED_SINCE)
+    {
+      char strtime[32];
+      uerr_t err = time_to_rfc1123 (hs->orig_file_tstamp, strtime, countof (strtime));
+
+      if (err != RETROK)
+        {
+          logputs (LOG_VERBOSE, _("Cannot convert timestamp to http format. "
+                                  "Falling back to time 0 as last modification "
+                                  "time.\n"));
+          strcpy (strtime, "Thu, 01 Jan 1970 00:00:00 GMT");
+        }
+      request_set_header (req, "If-Modified-Since", xstrdup (strtime), rel_value);
     }
   if (hs->restval)
     request_set_header (req, "Range",
@@ -1761,7 +1862,7 @@ initialize_request (struct url *u, struct http_stat *hs, int *dt, struct url *pr
                 {
                   logprintf (LOG_NOTQUIET, _("BODY data file %s missing: %s\n"),
                              quote (opt.body_file), strerror (errno));
-                  request_free (req);
+                  request_free (&req);
                   *ret = FILEBADFILE;
                   return NULL;
                 }
@@ -1868,7 +1969,6 @@ establish_connection (struct url *u, struct url **conn_ref,
         }
       else if (host_lookup_failed)
         {
-          request_free (req);
           logprintf(LOG_NOTQUIET,
                     _("%s: unable to resolve host address %s\n"),
                     exec_name, quote (relevant->host));
@@ -1884,16 +1984,10 @@ establish_connection (struct url *u, struct url **conn_ref,
     {
       sock = connect_to_host (conn->host, conn->port);
       if (sock == E_HOST)
-        {
-          request_free (req);
-          return HOSTERR;
-        }
+        return HOSTERR;
       else if (sock < 0)
-        {
-          request_free (req);
-          return (retryable_socket_connect_error (errno)
-                  ? CONERROR : CONIMPOSSIBLE);
-        }
+        return (retryable_socket_connect_error (errno)
+                ? CONERROR : CONIMPOSSIBLE);
 
 #ifdef HAVE_SSL
       if (proxy && u->scheme == SCHEME_HTTPS)
@@ -1919,11 +2013,10 @@ establish_connection (struct url *u, struct url **conn_ref,
                               rel_value);
 
           write_error = request_send (connreq, sock, 0);
-          request_free (connreq);
+          request_free (&connreq);
           if (write_error < 0)
             {
               CLOSE_INVALIDATE (sock);
-              request_free (req);
               return WRITEFAILED;
             }
 
@@ -1933,7 +2026,6 @@ establish_connection (struct url *u, struct url **conn_ref,
               logprintf (LOG_VERBOSE, _("Failed reading proxy response: %s\n"),
                          fd_errstr (sock));
               CLOSE_INVALIDATE (sock);
-              request_free (req);
               return HERR;
             }
           message = NULL;
@@ -1954,12 +2046,11 @@ establish_connection (struct url *u, struct url **conn_ref,
                          quotearg_style (escape_quoting_style,
                                          _("Malformed status line")));
               xfree (head);
-              request_free (req);
               return HERR;
             }
           xfree(hs->message);
           hs->message = xstrdup (message);
-          resp_free (resp);
+          resp_free (&resp);
           xfree (head);
           if (statcode != 200)
             {
@@ -1967,7 +2058,6 @@ establish_connection (struct url *u, struct url **conn_ref,
               logprintf (LOG_NOTQUIET, _("Proxy tunneling failed: %s"),
                          message ? quotearg_style (escape_quoting_style, message) : "?");
               xfree (message);
-              request_free (req);
               return CONSSLERR;
             }
           xfree (message);
@@ -1983,13 +2073,11 @@ establish_connection (struct url *u, struct url **conn_ref,
           if (!ssl_connect_wget (sock, u->host))
             {
               CLOSE_INVALIDATE (sock);
-              request_free (req);
               return CONSSLERR;
             }
           else if (!ssl_check_certificate (sock, u->host))
             {
               CLOSE_INVALIDATE (sock);
-              request_free (req);
               return VERIFCERTERR;
             }
           *using_ssl = true;
@@ -1999,6 +2087,69 @@ establish_connection (struct url *u, struct url **conn_ref,
   *conn_ref = conn;
   *req_ref = req;
   *sock_ref = sock;
+  return RETROK;
+}
+
+static uerr_t
+set_file_timestamp (struct http_stat *hs)
+{
+  size_t filename_len = strlen (hs->local_file);
+  char *filename_plus_orig_suffix = alloca (filename_len + sizeof (ORIG_SFX));
+  bool local_dot_orig_file_exists = false;
+  char *local_filename = NULL;
+  struct_stat st;
+
+  if (opt.backup_converted)
+    /* If -K is specified, we'll act on the assumption that it was specified
+        last time these files were downloaded as well, and instead of just
+        comparing local file X against server file X, we'll compare local
+        file X.orig (if extant, else X) against server file X.  If -K
+        _wasn't_ specified last time, or the server contains files called
+        *.orig, -N will be back to not operating correctly with -k. */
+    {
+      /* Would a single s[n]printf() call be faster?  --dan
+
+          Definitely not.  sprintf() is horribly slow.  It's a
+          different question whether the difference between the two
+          affects a program.  Usually I'd say "no", but at one
+          point I profiled Wget, and found that a measurable and
+          non-negligible amount of time was lost calling sprintf()
+          in url.c.  Replacing sprintf with inline calls to
+          strcpy() and number_to_string() made a difference.
+          --hniksic */
+      memcpy (filename_plus_orig_suffix, hs->local_file, filename_len);
+      memcpy (filename_plus_orig_suffix + filename_len,
+              ORIG_SFX, sizeof (ORIG_SFX));
+
+      /* Try to stat() the .orig file. */
+      if (stat (filename_plus_orig_suffix, &st) == 0)
+        {
+          local_dot_orig_file_exists = true;
+          local_filename = filename_plus_orig_suffix;
+        }
+    }
+
+  if (!local_dot_orig_file_exists)
+    /* Couldn't stat() <file>.orig, so try to stat() <file>. */
+    if (stat (hs->local_file, &st) == 0)
+      local_filename = hs->local_file;
+
+  if (local_filename != NULL)
+    /* There was a local file, so we'll check later to see if the version
+        the server has is the same version we already have, allowing us to
+        skip a download. */
+    {
+      hs->orig_file_name = xstrdup (local_filename);
+      hs->orig_file_size = st.st_size;
+      hs->orig_file_tstamp = st.st_mtime;
+#ifdef WINDOWS
+      /* Modification time granularity is 2 seconds for Windows, so
+          increase local time by 1 second for later comparison. */
+      ++hs->orig_file_tstamp;
+#endif
+      hs->timestamp_checked = true;
+    }
+
   return RETROK;
 }
 
@@ -2055,61 +2206,9 @@ check_file_output (struct url *u, struct http_stat *hs,
   /* Support timestamping */
   if (opt.timestamping && !hs->timestamp_checked)
     {
-      size_t filename_len = strlen (hs->local_file);
-      char *filename_plus_orig_suffix = alloca (filename_len + sizeof (ORIG_SFX));
-      bool local_dot_orig_file_exists = false;
-      char *local_filename = NULL;
-      struct_stat st;
-
-      if (opt.backup_converted)
-        /* If -K is specified, we'll act on the assumption that it was specified
-           last time these files were downloaded as well, and instead of just
-           comparing local file X against server file X, we'll compare local
-           file X.orig (if extant, else X) against server file X.  If -K
-           _wasn't_ specified last time, or the server contains files called
-           *.orig, -N will be back to not operating correctly with -k. */
-        {
-          /* Would a single s[n]printf() call be faster?  --dan
-
-             Definitely not.  sprintf() is horribly slow.  It's a
-             different question whether the difference between the two
-             affects a program.  Usually I'd say "no", but at one
-             point I profiled Wget, and found that a measurable and
-             non-negligible amount of time was lost calling sprintf()
-             in url.c.  Replacing sprintf with inline calls to
-             strcpy() and number_to_string() made a difference.
-             --hniksic */
-          memcpy (filename_plus_orig_suffix, hs->local_file, filename_len);
-          memcpy (filename_plus_orig_suffix + filename_len,
-                  ORIG_SFX, sizeof (ORIG_SFX));
-
-          /* Try to stat() the .orig file. */
-          if (stat (filename_plus_orig_suffix, &st) == 0)
-            {
-              local_dot_orig_file_exists = true;
-              local_filename = filename_plus_orig_suffix;
-            }
-        }
-
-      if (!local_dot_orig_file_exists)
-        /* Couldn't stat() <file>.orig, so try to stat() <file>. */
-        if (stat (hs->local_file, &st) == 0)
-          local_filename = hs->local_file;
-
-      if (local_filename != NULL)
-        /* There was a local file, so we'll check later to see if the version
-           the server has is the same version we already have, allowing us to
-           skip a download. */
-        {
-          hs->orig_file_name = xstrdup (local_filename);
-          hs->orig_file_size = st.st_size;
-          hs->orig_file_tstamp = st.st_mtime;
-#ifdef WINDOWS
-          /* Modification time granularity is 2 seconds for Windows, so
-             increase local time by 1 second for later comparison. */
-          ++hs->orig_file_tstamp;
-#endif
-        }
+      uerr_t timestamp_err = set_file_timestamp (hs);
+      if (timestamp_err != RETROK)
+        return timestamp_err;
     }
   return RETROK;
 }
@@ -2330,6 +2429,27 @@ open_output_stream (struct http_stat *hs, int count, FILE **fp)
       return RETROK;
 }
 
+/* Set proper type flags based on type string.  */
+static void
+set_content_type (int *dt, const char *type)
+{
+  /* If content-type is not given, assume text/html.  This is because
+     of the multitude of broken CGI's that "forget" to generate the
+     content-type.  */
+  if (!type ||
+      0 == strncasecmp (type, TEXTHTML_S, strlen (TEXTHTML_S)) ||
+      0 == strncasecmp (type, TEXTXHTML_S, strlen (TEXTXHTML_S)))
+    *dt |= TEXTHTML;
+  else
+    *dt &= ~TEXTHTML;
+
+  if (type &&
+      0 == strncasecmp (type, TEXTCSS_S, strlen (TEXTCSS_S)))
+    *dt |= TEXTCSS;
+  else
+    *dt &= ~TEXTCSS;
+}
+
 /* Retrieve a document through HTTP protocol.  It recognizes status
    code, and correctly handles redirections.  It closes the network
    socket.  If it receives an error from the functions below it, it
@@ -2344,9 +2464,9 @@ static uerr_t
 gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
          struct iri *iri, int count)
 {
-  struct request *req;
+  struct request *req = NULL;
 
-  char *type;
+  char *type = NULL;
   char *user, *passwd;
   char *proxyauth;
   int statcode;
@@ -2355,6 +2475,7 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
   struct url *conn;
   FILE *fp;
   int err;
+  uerr_t retval;
 
   int sock = -1;
 
@@ -2377,10 +2498,13 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
      POST). */
   bool head_only = !!(*dt & HEAD_ONLY);
 
-  char *head;
-  struct response *resp;
+  /* Whether conditional get request will be issued.  */
+  bool cond_get = !!(*dt & IF_MODIFIED_SINCE);
+
+  char *head = NULL;
+  struct response *resp = NULL;
   char hdrval[512];
-  char *message;
+  char *message = NULL;
 
   /* Declare WARC variables. */
   bool warc_enabled = (opt.warc_filename != NULL);
@@ -2414,7 +2538,8 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
           scheme_disable (SCHEME_HTTPS);
           logprintf (LOG_NOTQUIET,
                      _("Disabling SSL due to encountered errors.\n"));
-          return SSLINITFAILED;
+          retval = SSLINITFAILED;
+          goto cleanup;
         }
     }
 #endif /* HAVE_SSL */
@@ -2437,7 +2562,10 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
                               &basic_auth_finished, &body_data_size,
                               &user, &passwd, &ret);
     if (req == NULL)
-      return ret;
+      {
+        retval = ret;
+        goto cleanup;
+      }
   }
  retry_with_auth:
   /* We need to come back here when the initial attempt to retrieve
@@ -2477,12 +2605,14 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
     keep_alive = false;
 
   {
-    uerr_t err = establish_connection (u, &conn, hs, proxy, &proxyauth, &req,
-                                       &using_ssl, inhibit_keep_alive, &sock);
-    if (err != RETROK)
-      return err;
+    uerr_t conn_err = establish_connection (u, &conn, hs, proxy, &proxyauth, &req,
+                                            &using_ssl, inhibit_keep_alive, &sock);
+    if (conn_err != RETROK)
+      {
+        retval = conn_err;
+        goto cleanup;
+      }
   }
-
 
   /* Open the temporary file where we will write the request. */
   if (warc_enabled)
@@ -2491,8 +2621,8 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
       if (warc_tmp == NULL)
         {
           CLOSE_INVALIDATE (sock);
-          request_free (req);
-          return WARC_TMP_FOPENERR;
+          retval = WARC_TMP_FOPENERR;
+          goto cleanup;
         }
 
       if (! proxy)
@@ -2537,15 +2667,15 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
   if (write_error < 0)
     {
       CLOSE_INVALIDATE (sock);
-      request_free (req);
 
       if (warc_tmp != NULL)
         fclose (warc_tmp);
 
       if (write_error == -2)
-        return WARC_TMP_FWRITEERR;
+        retval = WARC_TMP_FWRITEERR;
       else
-        return WRITEFAILED;
+        retval = WRITEFAILED;
+      goto cleanup;
     }
   logprintf (LOG_VERBOSE, _("%s request sent, awaiting response... "),
              proxy ? "Proxy" : "HTTP");
@@ -2569,62 +2699,70 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
       if (! warc_result)
         {
           CLOSE_INVALIDATE (sock);
-          request_free (req);
-          return WARC_ERR;
+          retval = WARC_ERR;
+          goto cleanup;
         }
 
       /* warc_write_request_record has also closed warc_tmp. */
     }
 
+  /* Repeat while we receive a 10x response code.  */
+  {
+    bool _repeat;
 
-read_header:
-  head = read_http_response_head (sock);
-  if (!head)
-    {
-      if (errno == 0)
-        {
-          logputs (LOG_NOTQUIET, _("No data received.\n"));
-          CLOSE_INVALIDATE (sock);
-          request_free (req);
-          return HEOF;
-        }
-      else
-        {
-          logprintf (LOG_NOTQUIET, _("Read error (%s) in headers.\n"),
-                     fd_errstr (sock));
-          CLOSE_INVALIDATE (sock);
-          request_free (req);
-          return HERR;
-        }
-    }
-  DEBUGP (("\n---response begin---\n%s---response end---\n", head));
+    do
+      {
+        head = read_http_response_head (sock);
+        if (!head)
+          {
+            if (errno == 0)
+              {
+                logputs (LOG_NOTQUIET, _("No data received.\n"));
+                CLOSE_INVALIDATE (sock);
+                retval = HEOF;
+              }
+            else
+              {
+                logprintf (LOG_NOTQUIET, _("Read error (%s) in headers.\n"),
+                           fd_errstr (sock));
+                CLOSE_INVALIDATE (sock);
+                retval = HERR;
+              }
+            goto cleanup;
+          }
+        DEBUGP (("\n---response begin---\n%s---response end---\n", head));
 
-  resp = resp_new (head);
+        resp = resp_new (head);
 
-  /* Check for status line.  */
-  message = NULL;
-  statcode = resp_status (resp, &message);
-  if (statcode < 0)
-    {
-      char *tms = datetime_str (time (NULL));
-      logprintf (LOG_VERBOSE, "%d\n", statcode);
-      logprintf (LOG_NOTQUIET, _("%s ERROR %d: %s.\n"), tms, statcode,
-                 quotearg_style (escape_quoting_style,
-                                 _("Malformed status line")));
-      CLOSE_INVALIDATE (sock);
-      resp_free (resp);
-      request_free (req);
-      xfree (head);
-      return HERR;
-    }
+        /* Check for status line.  */
+        message = NULL;
+        statcode = resp_status (resp, &message);
+        if (statcode < 0)
+          {
+            char *tms = datetime_str (time (NULL));
+            logprintf (LOG_VERBOSE, "%d\n", statcode);
+            logprintf (LOG_NOTQUIET, _("%s ERROR %d: %s.\n"), tms, statcode,
+                       quotearg_style (escape_quoting_style,
+                                       _("Malformed status line")));
+            CLOSE_INVALIDATE (sock);
+            retval = HERR;
+            goto cleanup;
+          }
 
-  if (H_10X (statcode))
-    {
-      DEBUGP (("Ignoring response\n"));
-      resp_free (resp);
-      xfree (head);
-      goto read_header;
-    }
+        if (H_10X (statcode))
+          {
+            xfree (head);
+            resp_free (&resp);
+            _repeat = true;
+            DEBUGP (("Ignoring response\n"));
+          }
+        else
+          {
+            _repeat = false;
+          }
+      }
+    while (_repeat);
+  }
 
   xfree(hs->message);
   hs->message = xstrdup (message);
@@ -2721,11 +2859,8 @@ read_header:
           if (_err != RETRFINISHED || hs->res < 0)
             {
               CLOSE_INVALIDATE (sock);
-              request_free (req);
-              xfree (message);
-              resp_free (resp);
-              xfree (head);
-              return _err;
+              retval = _err;
+              goto cleanup;
             }
           else
             CLOSE_FINISH (sock);
@@ -2750,20 +2885,17 @@ read_header:
         if (auth_err == RETROK && retry)
           {
             xfree (hs->message);
-            resp_free (resp);
+            resp_free (&resp);
             xfree (message);
             xfree (head);
             goto retry_with_auth;
           }
       }
-      request_free (req);
-      xfree (message);
-      resp_free (resp);
-      xfree (head);
       if (auth_err == RETROK)
-        return AUTHFAILED;
+        retval = AUTHFAILED;
       else
-        return auth_err;
+        retval = auth_err;
+      goto cleanup;
     }
   else /* statcode != HTTP_STATUS_UNAUTHORIZED */
     {
@@ -2779,13 +2911,10 @@ read_header:
       hs->restval = 0;
 
       CLOSE_FINISH (sock);
-      request_free (req);
       xfree (hs->message);
-      xfree (message);
-      resp_free (resp);
-      xfree (head);
 
-      return GATEWAYTIMEOUT;
+      retval = GATEWAYTIMEOUT;
+      goto cleanup;
     }
 
 
@@ -2793,14 +2922,10 @@ read_header:
     uerr_t ret = check_file_output (u, hs, resp, hdrval, sizeof hdrval);
     if (ret != RETROK)
       {
-        request_free (req);
-        resp_free (resp);
-        xfree (head);
-        xfree (message);
-        return ret;
+        retval = ret;
+        goto cleanup;
       }
   }
-  request_free (req);
 
   hs->statcode = statcode;
   if (statcode == -1)
@@ -2809,7 +2934,6 @@ read_header:
     hs->error = xstrdup (_("(no description)"));
   else
     hs->error = xstrdup (message);
-  xfree (message);
 
   type = resp_header_strdup (resp, "Content-Type");
   if (type)
@@ -2847,7 +2971,6 @@ read_header:
           contlen = last_byte_pos - first_byte_pos + 1;
         }
     }
-  resp_free (resp);
 
   /* 20x responses are counted among successful by default.  */
   if (H_20X (statcode))
@@ -2863,10 +2986,9 @@ read_header:
       hs->restval = 0;
 
       CLOSE_FINISH (sock);
-      xfree (type);
-      xfree (head);
 
-      return RETRFINISHED;
+      retval = RETRFINISHED;
+      goto cleanup;
     }
 
   /* Return if redirected.  */
@@ -2904,9 +3026,8 @@ read_header:
               if (_err != RETRFINISHED || hs->res < 0)
                 {
                   CLOSE_INVALIDATE (sock);
-                  xfree (type);
-                  xfree (head);
-                  return _err;
+                  retval = _err;
+                  goto cleanup;
                 }
               else
                 CLOSE_FINISH (sock);
@@ -2921,8 +3042,6 @@ read_header:
                 CLOSE_INVALIDATE (sock);
             }
 
-          xfree (type);
-          xfree (head);
           /* From RFC2616: The status codes 303 and 307 have
              been added for servers that wish to make unambiguously
              clear which kind of reaction is expected of the client.
@@ -2941,37 +3060,29 @@ read_header:
           switch (statcode)
             {
             case HTTP_STATUS_TEMPORARY_REDIRECT:
-              return NEWLOCATION_KEEP_POST;
+              retval = NEWLOCATION_KEEP_POST;
+              goto cleanup;
             case HTTP_STATUS_MOVED_PERMANENTLY:
               if (opt.method && c_strcasecmp (opt.method, "post") != 0)
-                return NEWLOCATION_KEEP_POST;
+                {
+                  retval = NEWLOCATION_KEEP_POST;
+                  goto cleanup;
+                }
               break;
             case HTTP_STATUS_MOVED_TEMPORARILY:
               if (opt.method && c_strcasecmp (opt.method, "post") != 0)
-                return NEWLOCATION_KEEP_POST;
+                {
+                  retval = NEWLOCATION_KEEP_POST;
+                  goto cleanup;
+                }
               break;
-            default:
-              return NEWLOCATION;
             }
-          return NEWLOCATION;
+          retval = NEWLOCATION;
+          goto cleanup;
         }
     }
 
-  /* If content-type is not given, assume text/html.  This is because
-     of the multitude of broken CGI's that "forget" to generate the
-     content-type.  */
-  if (!type ||
-        0 == strncasecmp (type, TEXTHTML_S, strlen (TEXTHTML_S)) ||
-        0 == strncasecmp (type, TEXTXHTML_S, strlen (TEXTXHTML_S)))
-    *dt |= TEXTHTML;
-  else
-    *dt &= ~TEXTHTML;
-
-  if (type &&
-      0 == strncasecmp (type, TEXTCSS_S, strlen (TEXTCSS_S)))
-    *dt |= TEXTCSS;
-  else
-    *dt &= ~TEXTCSS;
+  set_content_type (dt, type);
 
   if (opt.adjust_extension)
     {
@@ -2986,6 +3097,41 @@ read_header:
       else if (*dt & TEXTCSS)
         {
           ensure_extension (hs, ".css", dt);
+        }
+    }
+
+  if (cond_get)
+    {
+      if (statcode == HTTP_STATUS_NOT_MODIFIED)
+        {
+          logprintf (LOG_VERBOSE,
+                     _("File %s not modified on server. Omitting download.\n\n"),
+                     quote (hs->local_file));
+          *dt |= RETROKF;
+          CLOSE_FINISH (sock);
+          retval = RETRUNNEEDED;
+          goto cleanup;
+        }
+      /* Handle the case when server ignores If-Modified-Since header.  */
+      else if (statcode == HTTP_STATUS_OK && hs->remote_time)
+        {
+          time_t tmr = http_atotm (hs->remote_time);
+
+          /* Check if the local file is up-to-date based on Last-Modified header
+             and content length.  */
+          if (tmr != (time_t) - 1 && tmr <= hs->orig_file_tstamp
+              && (contlen == -1 || contlen == hs->orig_file_size))
+            {
+              logprintf (LOG_VERBOSE,
+                         _("Server ignored If-Modified-Since header for file %s.\n"
+                           "You might want to add --no-if-modified-since option."
+                           "\n\n"),
+                         quote (hs->local_file));
+              *dt |= RETROKF;
+              CLOSE_INVALIDATE (sock);
+              retval = RETRUNNEEDED;
+              goto cleanup;
+            }
         }
     }
 
@@ -3004,24 +3150,22 @@ read_header:
       hs->res = 0;
       /* Mark as successfully retrieved. */
       *dt |= RETROKF;
-      xfree (type);
       if (statcode == HTTP_STATUS_RANGE_NOT_SATISFIABLE)
         CLOSE_FINISH (sock);
       else
         CLOSE_INVALIDATE (sock);        /* would be CLOSE_FINISH, but there
                                    might be more bytes in the body. */
-      xfree (head);
-      return RETRUNNEEDED;
+      retval = RETRUNNEEDED;
+      goto cleanup;
     }
   if ((contrange != 0 && contrange != hs->restval)
       || (H_PARTIAL (statcode) && !contrange))
     {
       /* The Range request was somehow misunderstood by the server.
          Bail out.  */
-      xfree (type);
       CLOSE_INVALIDATE (sock);
-      xfree (head);
-      return RANGEERR;
+      retval = RANGEERR;
+      goto cleanup;
     }
   if (contlen == -1)
     hs->contlen = -1;
@@ -3084,9 +3228,8 @@ read_header:
           if (_err != RETRFINISHED || hs->res < 0)
             {
               CLOSE_INVALIDATE (sock);
-              xfree (head);
-              xfree (type);
-              return _err;
+              retval = _err;
+              goto cleanup;
             }
           else
             CLOSE_FINISH (sock);
@@ -3109,18 +3252,16 @@ read_header:
             CLOSE_INVALIDATE (sock);
         }
 
-      xfree (head);
-      xfree (type);
-      return RETRFINISHED;
+      retval = RETRFINISHED;
+      goto cleanup;
     }
 
   err = open_output_stream (hs, count, &fp);
   if (err != RETROK)
     {
-      xfree (type);
-      xfree (head);
       CLOSE_INVALIDATE (sock);
-      return err;
+      retval = err;
+      goto cleanup;
     }
 
   err = read_response_body (hs, sock, fp, contlen, contrange,
@@ -3128,10 +3269,6 @@ read_header:
                             u->url, warc_timestamp_str,
                             warc_request_uuid, warc_ip, type,
                             statcode, head);
-
-  /* Now we no longer need to store the response header. */
-  xfree (head);
-  xfree (type);
 
   if (hs->res >= 0)
     CLOSE_FINISH (sock);
@@ -3141,7 +3278,16 @@ read_header:
   if (!output_stream)
     fclose (fp);
 
-  return err;
+  retval = err;
+
+  cleanup:
+  xfree (head);
+  xfree (type);
+  xfree (message);
+  resp_free (&resp);
+  request_free (&req);
+
+  return retval;
 }
 
 /* The genuine HTTP loop!  This is the part where the retrieval is
@@ -3232,15 +3378,30 @@ http_loop (struct url *u, struct url *original_url, char **newloc,
   if (opt.content_disposition && opt.always_rest)
     send_head_first = true;
 
-  /* Send preliminary HEAD request if -N is given and we have an existing
-   * destination file. */
   if (!opt.output_document)
       file_name = url_file_name (opt.trustservernames ? u : original_url, NULL);
   else
     file_name = xstrdup (opt.output_document);
-  if (opt.timestamping && (file_exists_p (file_name)
-                           || opt.content_disposition))
-    send_head_first = true;
+
+  if (opt.timestamping)
+    {
+      /* Use conditional get request if requested
+       * and if timestamp is known at this moment.  */
+      if (opt.if_modified_since && file_exists_p (file_name) && !send_head_first)
+        {
+          *dt |= IF_MODIFIED_SINCE;
+          {
+            uerr_t timestamp_err = set_file_timestamp (&hstat);
+            if (timestamp_err != RETROK)
+              return timestamp_err;
+          }
+        }
+        /* Send preliminary HEAD request if -N is given and we have existing
+         * destination file or content disposition is enabled.  */
+      else if (file_exists_p (file_name) || opt.content_disposition)
+        send_head_first = true;
+    }
+
   xfree (file_name);
 
   /* THE loop */
@@ -4247,7 +4408,13 @@ test_parse_content_disposition(void)
     { "attachment; filename=\"file.ext\"; dummy", "file.ext", true },
     { "attachment", NULL, false },
     { "attachement; filename*=UTF-8'en-US'hello.txt", "hello.txt", true },
-    { "attachement; filename*0=\"hello\"; filename*1=\"world.txt\"", "helloworld.txt", true },
+    { "attachement; filename*0=\"hello\"; filename*1=\"world.txt\"",
+      "helloworld.txt", true },
+    { "attachment; filename=\"A.ext\"; filename*=\"B.ext\"", "B.ext", true },
+    { "attachment; filename*=\"A.ext\"; filename*0=\"B\"; filename*1=\"B.ext\"",
+      "A.ext", true },
+    { "filename**0=\"A\"; filename**1=\"A.ext\"; filename*0=\"B\";\
+filename*1=\"B\"", "AA.ext", true },
   };
 
   for (i = 0; i < countof(test_array); ++i)

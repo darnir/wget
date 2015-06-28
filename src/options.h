@@ -165,6 +165,7 @@ struct options
 #endif
 
   bool timestamping;            /* Whether to use time-stamping. */
+  bool if_modified_since;       /* Whether to use conditional get requests.  */
 
   bool backup_converted;        /* Do we save pre-converted files as *.orig? */
   int backups;                  /* Are numeric backups made? */
@@ -239,6 +240,7 @@ struct options
 
   enum {
     restrict_unix,
+    restrict_vms,
     restrict_windows
   } restrict_files_os;          /* file name restriction ruleset. */
   bool restrict_files_ctrl;     /* non-zero if control chars in URLs
