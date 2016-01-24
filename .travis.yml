@@ -4,6 +4,7 @@ language: c
 
 compiler:
     - gcc
+    - clang
 
 notifications:
     email:
