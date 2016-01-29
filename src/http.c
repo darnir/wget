@@ -3276,7 +3276,7 @@ gethttp (struct url *u, struct http_stat *hs, int *dt, struct url *proxy,
         {
           char *set_cookie; BOUNDED_TO_ALLOCA (scbeg, scend, set_cookie);
           cookie_handle_set_cookie (wget_cookie_jar, u->host, u->port,
-                                    u->path, set_cookie);
+                                    u->path, u->scheme, set_cookie);
         }
     }
 

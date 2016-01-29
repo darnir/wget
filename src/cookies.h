@@ -31,13 +31,16 @@ as that of the covered work.  */
 #ifndef COOKIES_H
 #define COOKIES_H
 
+#include "url.h"
+
 struct cookie_jar;
 
 struct cookie_jar *cookie_jar_new (void);
 void cookie_jar_delete (struct cookie_jar *);
 
 void cookie_handle_set_cookie (struct cookie_jar *, const char *, int,
-                               const char *, const char *);
+                               const char *, enum url_scheme,
+                               const char *);
 char *cookie_header (struct cookie_jar *, const char *, int,
                      const char *, bool);
 

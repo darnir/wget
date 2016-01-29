@@ -122,6 +122,13 @@ struct cookie {
                                    same domain. */
 };
 
+static int
+find_chains_of_host (struct cookie_jar *jar, const char *host,
+                     struct cookie *dest[]);
+
+static int
+count_char (const char *string, char chr);
+
 #define PORT_ANY (-1)
 
 /* Allocate and return a new, empty cookie structure. */
@@ -350,7 +357,8 @@ discard_matching_cookie (struct cookie_jar *jar, struct cookie *cookie)
    filled.  */
 
 static struct cookie *
-parse_set_cookie (const char *set_cookie, bool silent)
+parse_set_cookie (const char *set_cookie, enum url_scheme scheme,
+                  bool silent)
 {
   const char *ptr = set_cookie;
   struct cookie *cookie = cookie_new ();
@@ -439,8 +447,21 @@ parse_set_cookie (const char *set_cookie, bool silent)
         }
       else if (TOKEN_IS (name, "secure"))
         {
-          /* ignore value completely */
-          cookie->secure = 1;
+          if (scheme == SCHEME_HTTP)
+            {
+              /* Deleting cookie since secure only flag is set but connection
+                 is not secure. */
+              if (!silent)
+                  logprintf (LOG_NOTQUIET,
+                            _("Trying to create secure only cookie, but connection is not secure.\nSet-Cookie : %s\n"),
+                              quotearg_style (escape_quoting_style, set_cookie));
+              delete_cookie (cookie);
+              return NULL;
+            }
+          else
+          /* Ignore value completely since secure is a value-less
+             attribute*/
+            cookie->secure = 1;
         }
       /* else: Ignore unrecognized attribute. */
     }
@@ -460,6 +481,7 @@ parse_set_cookie (const char *set_cookie, bool silent)
   delete_cookie (cookie);
   return NULL;
 }
+
 
 #undef TOKEN_IS
 #undef TOKEN_NON_EMPTY
@@ -707,9 +729,12 @@ check_path_match (const char *cookie_path, const char *path)
 void
 cookie_handle_set_cookie (struct cookie_jar *jar,
                           const char *host, int port,
-                          const char *path, const char *set_cookie)
+                          const char *path, enum url_scheme scheme,
+                          const char *set_cookie)
 {
-  struct cookie *cookie;
+  struct cookie *cookie, *old_cookie;
+  struct cookie **chains;
+  int chain_count, i;
   cookies_now = time (NULL);
 
   /* Wget's paths don't begin with '/' (blame rfc1808), but cookie
@@ -717,7 +742,7 @@ cookie_handle_set_cookie (struct cookie_jar *jar,
      simply prepend slash to PATH.  */
   PREPEND_SLASH (path);
 
-  cookie = parse_set_cookie (set_cookie, false);
+  cookie = parse_set_cookie (set_cookie, scheme, false);
   if (!cookie)
     goto out;
 
@@ -767,6 +792,29 @@ cookie_handle_set_cookie (struct cookie_jar *jar,
         }
     }
 
+  if ((cookie->secure == 0) && (scheme == SCHEME_HTTP))
+    {
+      /* If an old cookie exists such that the all of the following are
+         true, then discard the new cookie.
+
+         - The "domain" domain-matches the domain of the new cookie
+         - The "name" matches the "name" of the new cookie
+         - Secure-only flag of old cookie is set */
+
+      chains = alloca_array (struct cookie *, 1 + count_char (host, '.'));
+      chain_count = find_chains_of_host (jar, host, chains);
+
+      for (i = 0; i < chain_count; i++)
+        for (old_cookie = chains[i]; old_cookie; old_cookie = old_cookie->next)
+          {
+            if (!cookie_expired_p(old_cookie)
+                && !(old_cookie->domain_exact
+                     && 0 != strcasecmp (host, old_cookie->domain))
+                && 0 == strcasecmp(old_cookie->attr, cookie->attr)
+                && 1 == old_cookie->secure)
+              goto out;
+          }
+    }
   /* Now store the cookie, or discard an existing cookie, if
      discarding was requested.  */
 
@@ -795,9 +843,12 @@ count_char (const char *string, char chr)
 {
   const char *p;
   int count = 0;
-  for (p = string; *p; p++)
-    if (*p == chr)
-      ++count;
+  p = string;
+  while ((p = strchr(p, chr)) != NULL)
+  {
+    ++count;
+    p++;
+  }
   return count;
 }
 
