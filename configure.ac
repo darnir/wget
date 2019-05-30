@@ -246,6 +246,7 @@ test -z "$CC" && cc_specified=yes
 
 AC_PROG_CC
 AM_PROG_CC_C_O
+AC_PROG_CC_C99
 AC_AIX
 
 gl_EARLY
@@ -390,6 +391,7 @@ if test -n "$WARN_CFLAGS"; then
     nw=
     nw="$nw -Wsystem-headers"       # System headers may trigger lot's of useless warnings
     nw="$nw -Wvla"                  # This project is C99
+	nw="$nw -Walloca"               # We use alloca. It's not so bad!!
     nw="$nw -Wstack-protector"
     nw="$nw -Wmissing-field-initializer"
     nw="$nw -Wtraditional"
