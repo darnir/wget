@@ -419,14 +419,14 @@ parse_set_cookie (const char *set_cookie, bool silent)
         }
       else if (TOKEN_IS (name, "max-age"))
         {
-          double maxage = -1;
+          time_t maxage = -1;
           char *value_copy;
 
           if (!TOKEN_NON_EMPTY (value))
             goto error;
           BOUNDED_TO_ALLOCA (value.b, value.e, value_copy);
 
-          sscanf (value_copy, "%lf", &maxage);
+          sscanf (value_copy, "%ld", &maxage);
           if (maxage == -1)
             /* something went wrong. */
             goto error;
@@ -1235,7 +1235,7 @@ cookie_jar_load (struct cookie_jar *jar, const char *file)
       struct cookie *cookie;
       char *p = line;
 
-      double expiry;
+      time_t expiry;
       int port;
 
       char *domain_b  = NULL, *domain_e  = NULL;
@@ -1294,12 +1294,12 @@ cookie_jar_load (struct cookie_jar *jar, const char *file)
       cookie->domain  = strdupdelim (domain_b, domain_e);
 
       /* safe default in case EXPIRES field is garbled. */
-      expiry = (double)cookies_now - 1;
+      expiry = cookies_now - 1;
 
       /* I don't like changing the line, but it's safe here.  (line is
          malloced.)  */
       *expires_e = '\0';
-      sscanf (expires_b, "%lf", &expiry);
+      sscanf (expires_b, "%ld", &expiry);
 
       if (expiry == 0)
         {
@@ -1370,10 +1370,10 @@ cookie_jar_save (struct cookie_jar *jar, const char *file)
           fputs (domain, fp);
           if (cookie->port != PORT_ANY)
             fprintf (fp, ":%d", cookie->port);
-          fprintf (fp, "\t%s\t%s\t%s\t%.0f\t%s\t%s\n",
+          fprintf (fp, "\t%s\t%s\t%s\t%ld\t%s\t%s\n",
                    cookie->domain_exact ? "FALSE" : "TRUE",
                    cookie->path, cookie->secure ? "TRUE" : "FALSE",
-                   (double)cookie->expiry_time,
+                   cookie->expiry_time,
                    cookie->attr, cookie->value);
           if (ferror (fp))
             goto out;
